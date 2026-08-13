@@ -2,51 +2,44 @@ name: Webook Monitor
 
 on:
   schedule:
-    # ينطلق في الدقيقة 2 ثم يكرر كل 5 دقائق (02, 07, 12, 17...)
-    - cron: '2-59/5 13-18 * * *'
-  workflow_dispatch:
+    # تشغيل كل 5 دقائق على مدار 24 ساعة طوال أيام الأسبوع
+    - cron: '*/5 * * * *'
+  workflow_dispatch: # يتيح لك التشغيل اليدوي في أي وقت
 
 jobs:
   check-webook:
     runs-on: ubuntu-latest
-
     steps:
-    # 1. جلب ملفات المستودع
     - name: Check out repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
-    # 2. إعداد بيئة Python
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.10'
 
-    # 3. استعادة ملف الفعاليات المسجلة من المرة السابقة
     - name: Restore cache for seen events
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: seen_events.json
         key: seen-events-${{ github.run_id }}
         restore-keys: |
           seen-events-
 
-    # 4. تثبيت المكتبات والمتصفح
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install playwright requests
         playwright install chromium
 
-    # 5. تشغيل السكريبت مع ربطه بالـ Secrets
     - name: Run Webook monitor script
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: python main.py
 
-    # 6. حفظ ملف الفعاليات المحدث للاستخدام في الدورة القادمة
     - name: Save cache for seen events
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: seen_events.json
         key: seen-events-${{ github.run_id }}
