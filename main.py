@@ -6,8 +6,10 @@ from playwright.sync_api import sync_playwright
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-CACHE_FILE = "seen_events.json"
+GH_TOKEN = os.getenv("GH_TOKEN")
+GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY")
 
+CACHE_FILE = "seen_events.json"
 TARGET_URL = "https://webook.com/ar/explore?tag=football"
 
 def send_telegram_message(message):
@@ -25,6 +27,27 @@ def send_telegram_message(message):
         print(f"📲 حالة إرسال تليجرام: {res.status_code}")
     except Exception as e:
         print(f"❌ فشل إرسال التليجرام: {e}")
+
+def trigger_next_run():
+    """ إعادة تشغيل الـ Workflow تلقائياً لضمان الاستمرارية """
+    if not GH_TOKEN or not GITHUB_REPOSITORY:
+        print("⚠️ لم يتم ضبط GH_TOKEN، سيعتمد التشغيل القادم على جدول Cron فقط.")
+        return
+    
+    url = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/actions/workflows/monitor.yml/dispatches"
+    headers = {
+        "Authorization": f"Bearer {GH_TOKEN}",
+        "Accept": "application/vnd.github+json"
+    }
+    data = {"ref": "main"}
+    try:
+        res = requests.post(url, headers=headers, json=data)
+        if res.status_code == 204:
+            print("🔄 تم إرسال طلب التشغيل القادم بنجاح (Keep-Alive Triggered)!")
+        else:
+            print(f"⚠️ تعذر إعادة التشغيل الآلي: {res.status_code} - {res.text}")
+    except Exception as e:
+        print(f"❌ خطأ أثناء إرسال طلب إعادة التشغيل: {e}")
 
 def load_seen_events():
     if os.path.exists(CACHE_FILE):
@@ -79,7 +102,8 @@ def perform_check(seen_events):
                         send_telegram_message(msg)
             
             save_seen_events(seen_events)
-            print(f"✅ اكتملت الدورة. فعاليات جديدة: {new_found}")
+            print(f"✅ اكتملت الدورة.
+[01/03/48 01:09 ص] Khaled S: فعاليات جديدة: {new_found}")
 
         except Exception as e:
             print(f"❌ حدث خطأ أثناء الفحص: {e}")
@@ -89,20 +113,44 @@ def perform_check(seen_events):
 def run_monitor():
     seen_events = load_seen_events()
     
-    # الفحص الأول
     print("--- ⏱️ الفحص الأول (Cycle 1) ---")
     perform_check(seen_events)
     
-    # الانتظار لمدة دقيقتين ونصف (150 ثانية) قبل الفحص الثاني داخل نفس التشغيل
-    print("⏳ الانتظار لمدة 150 ثانية لإجراء الفحص الثاني...")
-    time.sleep(150)
+    print("⏳ الانتظار لمدة 120 ثانية لإجراء الفحص الثاني...")
+    time.sleep(120)
     
-    # الفحص الثاني
     print("--- ⏱️ الفحص الثاني (Cycle 2) ---")
-    seen_events = load_seen_events() # إعادة تحميل الذاكرة
+    seen_events = load_seen_events()
     perform_check(seen_events)
-# إعادة استدعاء التشغيل القادم تلقائياً
+
+    # إعادة استدعاء التشغيل القادم تلقائياً
     trigger_next_run()
+
+if name == "__main__":
+    run_monitor()
     
+فعاليات جديدة: {new_found}")
+
+        except Exception as e:
+            print(f"❌ حدث خطأ أثناء الفحص: {e}")
+        finally:
+            browser.close()
+
+def run_monitor():
+    seen_events = load_seen_events()
+    
+    print("--- ⏱️ الفحص الأول (Cycle 1) ---")
+    perform_check(seen_events)
+    
+    print("⏳ الانتظار لمدة 120 ثانية لإجراء الفحص الثاني...")
+    time.sleep(120)
+    
+    print("--- ⏱️ الفحص الثاني (Cycle 2) ---")
+    seen_events = load_seen_events()
+    perform_check(seen_events)
+
+    # إعادة استدعاء التشغيل القادم تلقائياً
+    trigger_next_run()
+
 if __name__ == "__main__":
     run_monitor()
