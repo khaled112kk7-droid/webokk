@@ -101,8 +101,8 @@ def perform_check(seen_events):
                         print(f"✨ تم كشف فعالية جديدة: {display_name}")
                         send_telegram_message(msg)
             
-            save_seen_events(seen_events)
-            print(f"✅ اكتملت الدورة.فعاليات جديدة: {new_found}")
+        save_seen_events(seen_events)
+        print(f"✅ اكتملت الدورة.فعاليات جديدة: {new_found}")
 
         except Exception as e:
             print(f"❌ حدث خطأ أثناء الفحص: {e}")
