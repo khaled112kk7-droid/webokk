@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import requests
 from playwright.sync_api import sync_playwright
 
@@ -7,7 +8,6 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 CACHE_FILE = "seen_events.json"
 
-# الرابط المستهدف المباشر لصفحة كرة القدم
 TARGET_URL = "https://webook.com/ar/explore?tag=football"
 
 def send_telegram_message(message):
@@ -39,10 +39,9 @@ def save_seen_events(seen_events):
     with open(CACHE_FILE, "w", encoding="utf-8") as f:
         json.dump(list(seen_events), f, ensure_ascii=False, indent=2)
 
-def run_monitor():
-    seen_events = load_seen_events()
+def perform_check(seen_events):
     new_found = 0
-    print(f"🔍 بدء فحص صفحة مباريات كرة القدم: {TARGET_URL}")
+    print(f"🔍 بدء فحص صفحة المباريات: {TARGET_URL}")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -53,23 +52,20 @@ def run_monitor():
         page = context.new_page()
         
         try:
-            # فتح صفحة الاستكشاف مباشرة
             page.goto(TARGET_URL, wait_until="domcontentloaded", timeout=60000)
-            page.wait_for_timeout(5000) # انتظار تحميل الكروت ونتائج كرة القدم
+            page.wait_for_timeout(4000)
             
-            # البحث عن كافة العناصر والروابط داخل الصفحة
             links = page.query_selector_all("a")
-            print(f"📊 إجمالي الروابط التي تم العثور عليها بالصفحة: {len(links)}")
+            print(f"📊 إجمالي الروابط بالصفحة: {len(links)}")
             
             for link in links:
                 href = link.get_attribute("href")
                 if not href:
                     continue
                 
-                # تصفية الروابط لتأخذ مسارات الفعاليات والمباريات فقط
                 if any(path in href for path in ['/e/', '/events/', '/matches/', '/sports/']):
                     full_url = href if href.startswith("http") else f"https://webook.com{href}"
-                    event_id = full_url.split("?")[0] # التمييز بالرابط الأساسي بدون برامترات
+                    event_id = full_url.split("?")[0]
                     
                     if event_id not in seen_events:
                         seen_events.add(event_id)
@@ -79,16 +75,32 @@ def run_monitor():
                         display_name = title if title else "مباراة / فعالية كرة قدم جديدة"
                         
                         msg = f"⚽ <b>فعالية كرة قدم جديدة على Webook!</b>\n\n📌 <b>العنوان:</b> {display_name}\n🔗 <b>الرابط:</b> {full_url}"
-                        print(f"✨ تم كشف مباراة/فعالية جديدة: {display_name}")
+                        print(f"✨ تم كشف فعالية جديدة: {display_name}")
                         send_telegram_message(msg)
             
             save_seen_events(seen_events)
-            print(f"✅ اكتمل الفحص بنجاح. عدد الفعاليات الجديدة المكتشفة: {new_found}")
+            print(f"✅ اكتملت الدورة. فعاليات جديدة: {new_found}")
 
         except Exception as e:
             print(f"❌ حدث خطأ أثناء الفحص: {e}")
         finally:
             browser.close()
+
+def run_monitor():
+    seen_events = load_seen_events()
+    
+    # الفحص الأول
+    print("--- ⏱️ الفحص الأول (Cycle 1) ---")
+    perform_check(seen_events)
+    
+    # الانتظار لمدة دقيقتين ونصف (150 ثانية) قبل الفحص الثاني داخل نفس التشغيل
+    print("⏳ الانتظار لمدة 150 ثانية لإجراء الفحص الثاني...")
+    time.sleep(150)
+    
+    # الفحص الثاني
+    print("--- ⏱️ الفحص الثاني (Cycle 2) ---")
+    seen_events = load_seen_events() # إعادة تحميل الذاكرة
+    perform_check(seen_events)
 
 if __name__ == "__main__":
     run_monitor()
