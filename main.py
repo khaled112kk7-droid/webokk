@@ -103,7 +103,7 @@ def perform_check(seen_events):
             
             save_seen_events(seen_events)
             print(f"✅ اكتملت الدورة.
-[01/03/48 01:09 ص] Khaled S: فعاليات جديدة: {new_found}")
+ فعاليات جديدة: {new_found}")
 
         except Exception as e:
             print(f"❌ حدث خطأ أثناء الفحص: {e}")
@@ -123,33 +123,6 @@ def run_monitor():
     seen_events = load_seen_events()
     perform_check(seen_events)
 
-    # إعادة استدعاء التشغيل القادم تلقائياً
-    trigger_next_run()
-
-if name == "__main__":
-    run_monitor()
-    
-فعاليات جديدة: {new_found}")
-
-        except Exception as e:
-            print(f"❌ حدث خطأ أثناء الفحص: {e}")
-        finally:
-            browser.close()
-
-def run_monitor():
-    seen_events = load_seen_events()
-    
-    print("--- ⏱️ الفحص الأول (Cycle 1) ---")
-    perform_check(seen_events)
-    
-    print("⏳ الانتظار لمدة 120 ثانية لإجراء الفحص الثاني...")
-    time.sleep(120)
-    
-    print("--- ⏱️ الفحص الثاني (Cycle 2) ---")
-    seen_events = load_seen_events()
-    perform_check(seen_events)
-
-    # إعادة استدعاء التشغيل القادم تلقائياً
     trigger_next_run()
 
 if __name__ == "__main__":
