@@ -2,9 +2,8 @@ name: Webook Monitor
 
 on:
   schedule:
-    # تشغيل كل 5 دقائق على مدار 24 ساعة طوال أيام الأسبوع
     - cron: '*/5 * * * *'
-  workflow_dispatch: # يتيح لك التشغيل اليدوي في أي وقت
+  workflow_dispatch:
 
 jobs:
   check-webook:
@@ -36,6 +35,8 @@ jobs:
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
       run: python main.py
 
     - name: Save cache for seen events
