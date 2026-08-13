@@ -1,3 +1,4 @@
+
 import os
 import json
 import time
@@ -29,7 +30,6 @@ def send_telegram_message(message):
         print(f"❌ فشل إرسال التليجرام: {e}")
 
 def trigger_next_run():
-    """ إعادة تشغيل الـ Workflow تلقائياً لضمان الاستمرارية """
     if not GH_TOKEN or not GITHUB_REPOSITORY:
         print("⚠️ لم يتم ضبط GH_TOKEN، سيعتمد التشغيل القادم على جدول Cron فقط.")
         return
@@ -101,9 +101,10 @@ def perform_check(seen_events):
                         print("✨ تم كشف فعالية جديدة: " + str(display_name))
                         send_telegram_message(msg)
             
-                        save_seen_events(seen_events)
-                        print("✅ اكتملت الدورة. فعاليات جديدة: " + str(new_found))
-except Exception as e:
+            save_seen_events(seen_events)
+            print("✅ اكتملت الدورة. فعاليات جديدة: " + str(new_found))
+
+        except Exception as e:
             print("❌ حدث خطأ أثناء الفحص: " + str(e))
         finally:
             browser.close()
