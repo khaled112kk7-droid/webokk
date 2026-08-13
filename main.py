@@ -101,6 +101,8 @@ def run_monitor():
     print("--- ⏱️ الفحص الثاني (Cycle 2) ---")
     seen_events = load_seen_events() # إعادة تحميل الذاكرة
     perform_check(seen_events)
-
+# إعادة استدعاء التشغيل القادم تلقائياً
+    trigger_next_run()
+    
 if __name__ == "__main__":
     run_monitor()
