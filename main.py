@@ -103,7 +103,7 @@ def perform_check(seen_events):
             
             save_seen_events(seen_events)
             print(f"✅ اكتملت الدورة.
- فعاليات جديدة: {new_found}")
+فعاليات جديدة: {new_found}")
 
         except Exception as e:
             print(f"❌ حدث خطأ أثناء الفحص: {e}")
@@ -125,5 +125,5 @@ def run_monitor():
 
     trigger_next_run()
 
-if __name__ == "__main__":
+if name == "__main__":
     run_monitor()
