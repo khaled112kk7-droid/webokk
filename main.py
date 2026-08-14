@@ -1,4 +1,3 @@
-
 import os
 import json
 import time
@@ -15,7 +14,7 @@ TARGET_URL = "https://webook.com/ar/explore?tag=football"
 
 def send_telegram_message(message):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("❌ خطأ: لم يتم العثور على TELEGRAM_BOT_TOKEN أو TELEGRAM_CHAT_ID")
+        print("❌ خطأ: لم يتم العثور على توكن التليجرام")
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
@@ -24,14 +23,15 @@ def send_telegram_message(message):
         "parse_mode": "HTML"
     }
     try:
-        res = requests.post(url, json=payload)
-        print(f"📲 حالة إرسال تليجرام: {res.status_code}")
+        res = requests.post(url, json=payload, timeout=10)
+        print("📲 حالة إرسال تليجرام:", res.status_code)
     except Exception as e:
-        print(f"❌ فشل إرسال التليجرام: {e}")
+        print("❌ فشل إرسال التليجرام:", e)
 
 def trigger_next_run():
+    """ استدعاء تشغيل جديد فوراً عبر GitHub API """
     if not GH_TOKEN or not GITHUB_REPOSITORY:
-        print("⚠️ لم يتم ضبط GH_TOKEN، سيعتمد التشغيل القادم على جدول Cron فقط.")
+        print("⚠️ لم يتم ضبط GH_TOKEN لتشغيل الدورة التالية تلقائياً.")
         return
     
     url = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/actions/workflows/monitor.yml/dispatches"
@@ -41,13 +41,13 @@ def trigger_next_run():
     }
     data = {"ref": "main"}
     try:
-        res = requests.post(url, headers=headers, json=data)
+        res = requests.post(url, headers=headers, json=data, timeout=10)
         if res.status_code == 204:
-            print("🔄 تم إرسال طلب التشغيل القادم بنجاح!")
+            print("🔄 تم إرسال أمر التشغيل الفوري للدورة القادمة بنجاح!")
         else:
-            print(f"⚠️ تعذر إعادة التشغيل الآلي: {res.status_code} - {res.text}")
+            print(f"⚠️ تعذر الإرسال: {res.status_code} - {res.text}")
     except Exception as e:
-        print(f"❌ خطأ أثناء إرسال طلب إعادة التشغيل: {e}")
+        print("❌ خطأ أثناء إرسال أمر التشغيل:", e)
 
 def load_seen_events():
     if os.path.exists(CACHE_FILE):
@@ -64,7 +64,7 @@ def save_seen_events(seen_events):
 
 def perform_check(seen_events):
     new_found = 0
-    print(f"🔍 بدء فحص صفحة المباريات: {TARGET_URL}")
+    print(f"🔍 بدء فحص الصفحة: {TARGET_URL}")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -75,11 +75,11 @@ def perform_check(seen_events):
         page = context.new_page()
         
         try:
-            page.goto(TARGET_URL, wait_until="domcontentloaded", timeout=60000)
-            page.wait_for_timeout(4000)
+            page.goto(TARGET_URL, wait_until="domcontentloaded", timeout=45000)
+            page.wait_for_timeout(3000)
             
             links = page.query_selector_all("a")
-            print(f"📊 إجمالي الروابط بالصفحة: {len(links)}")
+            print("📊 إجمالي الروابط بالصفحة:", len(links))
             
             for link in links:
                 href = link.get_attribute("href")
@@ -95,33 +95,32 @@ def perform_check(seen_events):
                         new_found += 1
                         
                         title = link.inner_text().strip().replace("\n", " ")
-                        display_name = title if title else "مباراة / فعالية كرة قدم جديدة"
+                        display_name = title if title else "مباراة / فعالية جديدة"
                         
                         msg = f"⚽ <b>فعالية جديدة على Webook!</b>\n\n📌 <b>العنوان:</b> {display_name}\n🔗 <b>الرابط:</b> {full_url}"
-                        print("✨ تم كشف فعالية جديدة: " + str(display_name))
+                        print("✨ تم كشف فعالية جديدة:", display_name)
                         send_telegram_message(msg)
             
             save_seen_events(seen_events)
-            print("✅ اكتملت الدورة. فعاليات جديدة: " + str(new_found))
+            print("✅ اكتمل الفحص. فعاليات جديدة:", new_found)
 
         except Exception as e:
-            print("❌ حدث خطأ أثناء الفحص: " + str(e))
+            print("❌ حدث خطأ أثناء الفحص:", e)
         finally:
             browser.close()
 
 def run_monitor():
-    seen_events = load_seen_events()
-    
-    print("--- ⏱️ الفحص الأول (Cycle 1) ---")
-    perform_check(seen_events)
-    
-    print("⏳ الانتظار لمدة 120 ثانية لإجراء الفحص الثاني...")
-    time.sleep(120)
-    
-    print("--- ⏱️ الفحص الثاني (Cycle 2) ---")
-    seen_events = load_seen_events()
-    perform_check(seen_events)
+    # فحص مكثف: 3 دورات تفصل بين كل دورة وأخرى 30 ثانية
+    for cycle in range(1, 4):
+        print(f"--- ⏱️ الفحص رقم ({cycle} من 3) ---")
+        seen_events = load_seen_events()
+        perform_check(seen_events)
+        
+        if cycle < 3:
+            print("⏳ انتظار 30 ثانية للشفافية والسلاسة...")
+            time.sleep(30)
 
+    # تشغيل الدورة التالية فوراً
     trigger_next_run()
 
 if __name__ == "__main__":
