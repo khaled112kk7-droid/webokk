@@ -109,15 +109,17 @@ def perform_check(seen_events):
             browser.close()
 
 def run_monitor():
-    for cycle in range(1, 4):
-        print(f"--- ⏱️ الفحص رقم ({cycle} من 3) ---")
+    # إجراء 10 فحوصات يفصل بين كل فحص وآخر 30 ثانية
+    for cycle in range(1, 11):
+        print(f"--- ⏱️ الفحص رقم ({cycle} من 10) ---")
         seen_events = load_seen_events()
         perform_check(seen_events)
         
-        if cycle < 3:
+        if cycle < 10:
             print("⏳ انتظار 30 ثانية للشفافية والسلاسة...")
             time.sleep(30)
 
+    # طلب تشغيل الدورة القادمة فوراً
     trigger_next_run()
 
 if __name__ == "__main__":
