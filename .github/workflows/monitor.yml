@@ -5,6 +5,11 @@ on:
     - cron: '*/5 * * * *'
   workflow_dispatch:
 
+# إلغاء الجلسات المتراكمة ومنع التشغيل المتوازي
+concurrency:
+  group: webook-monitor
+  cancel-in-progress: true
+
 permissions:
   actions: write
   contents: write
