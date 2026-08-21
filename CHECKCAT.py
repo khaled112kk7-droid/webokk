@@ -98,31 +98,32 @@ async def run_monitor():
             await page.wait_for_timeout(3000)
             print("تم تسجيل الدخول بنجاح!")
 
-            # --- الخطوة 2: الانتقال للفعالية واختيار الفريق ---
+            # --- الخطوة 2: الانتقال للفعالية واختيار الفريق بالمحددات الدقيقة ---
             print("الانتقال لصفحة الفعالية...")
             await page.goto(EVENT_URL, wait_until="networkidle")
 
-            # إغلاق الكوكيز مرة أخرى لو ظهرت في صفحة الفعالية
+            # إغلاق الكوكيز لو ظهرت
             await close_cookie_banner(page)
 
-            # 1. اختيار فريق الهلال
+            # 1. اختيار بطاقة فريق الهلال عبر data-testid
             print("اختيار فريق الهلال...")
-            hilal_element = page.locator("text='الهلال'").first
-            await hilal_element.wait_for(state="visible", timeout=30000)
-            await hilal_element.click(force=True)
+            hilal_card = page.locator("[data-testid='ui_toggle_favorite_team_651fdc90492867952e046ae2']").first
+            await hilal_card.wait_for(state="visible", timeout=30000)
+            await hilal_card.click(force=True)
             await page.wait_for_timeout(1000)
 
-            # 2. تحديد مربع "أوافق على حجز المقاعد..."
-            print("تحديد الموافقة...")
-            agree_text = page.locator("text='أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط'").first
-            await agree_text.wait_for(state="visible", timeout=15000)
-            await agree_text.click(force=True)
+            # 2. تحديد زر "أوافق" عبر data-testid
+            print("تحديد مربع الموافقة...")
+            terms_checkbox = page.locator("[data-testid='ticketing_teams_terms_checkbox']").first
+            await terms_checkbox.wait_for(state="visible", timeout=15000)
+            await terms_checkbox.click(force=True)
             await page.wait_for_timeout(1000)
 
-            # 3. الضغط على "التالي: اختيار التذاكر"
-            print("الضغط على التالي...")
-            next_btn = page.locator("button:has-text('التالي: اختيار التذاكر'), text='التالي: اختيار التذاكر'").first
-            await next_btn.click(force=True)
+            # 3. الضغط على زر "التالي" عبر data-testid
+            print("الضغط على زر التالي...")
+            confirm_button = page.locator("[data-testid='ticketing_teams_confirm_team_button']").first
+            await confirm_button.wait_for(state="visible", timeout=15000)
+            await confirm_button.click(force=True)
 
             # الانتظار لحين تحميل خريطة المقاعد والفئات
             await page.wait_for_timeout(5000)
