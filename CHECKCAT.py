@@ -12,7 +12,7 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 # 2. رابط الفعالية والفئات المطلوب مراقبتها
 EVENT_URL = "https://webook.com/ar/sa/ruh/sports-event/events/rsl-26-27-al-shabab-vs-al-hilal-227984/book"
-TARGET_CATEGORIES = ["Premium", "Premium 2"]  # 
+TARGET_CATEGORIES = ["Premium", "Premium 2"]  # عدل أسماء الفئات المطلوبة هنا
 
 # متغير تخزين المقاعد المستخرجة من الـ API
 seats_data_store = []
@@ -64,7 +64,7 @@ async def run_monitor():
         try:
             # --- الخطوة 1: تسجيل الدخول ---
             print("جاري فتح صفحة تسجيل الدخول...")
-            await page.goto("https://webook.com/ar/login", wait_until="domcontentloaded", timeout=60000)
+            await page.goto("https://webook.com/ar/login", wait_until="networkidle")
 
             # إغلاق نافذة الكوكيز إذا ظهرت
             await close_cookie_banner(page)
@@ -98,35 +98,33 @@ async def run_monitor():
             await page.wait_for_timeout(3000)
             print("تم تسجيل الدخول بنجاح!")
 
-            # --- الخطوة 2: الانتقال للفعالية واختيار الفريق بالمحددات المحددة ---
+            # --- الخطوة 2: الانتقال للفعالية واختيار الفريق ---
             print("الانتقال لصفحة الفعالية...")
-            await page.goto(EVENT_URL, wait_until="domcontentloaded", timeout=60000)
+            await page.goto(EVENT_URL, wait_until="networkidle")
 
             # إغلاق الكوكيز مرة أخرى لو ظهرت في صفحة الفعالية
             await close_cookie_banner(page)
 
-            # 1. اختيار بطاقة فريق الهلال
+            # اختيار زر فريق الهلال الفعلي والظاهر
             print("اختيار فريق الهلال...")
-            hilal_team = page.locator("[data-testid='ui_toggle_favorite_team_651fdc90492867952e046ae2']").first
-            await hilal_team.wait_for(state="attached", timeout=30000)
-            await hilal_team.evaluate("el => el.click()")
-            await page.wait_for_timeout(1000)
+            hilal_team = page.locator("button:has(p:has-text('الهلال')), button:has(img[alt*='الهلال'])").first
+            await hilal_team.wait_for(state="visible", timeout=30000)
+            await hilal_team.click(force=True)
 
-            # 2. تحديد زر "أوافق"
+            # تحديد مربع "أوافق على حجز المقاعد..."
             print("تحديد الموافقة...")
-            agree_checkbox = page.locator("[data-testid='ticketing_teams_terms_checkbox']").first
-            await agree_checkbox.wait_for(state="attached", timeout=15000)
-            await agree_checkbox.evaluate("el => el.click()")
-            await page.wait_for_timeout(1000)
+            agree_checkbox = page.locator("input[type='checkbox'], [role='checkbox']").first
+            await agree_checkbox.wait_for(state="visible", timeout=15000)
+            if not await agree_checkbox.is_checked():
+                await agree_checkbox.click(force=True)
 
-            # 3. الضغط على زر "التالي"
-            print("الضغط على زر التالي...")
-            next_btn = page.locator("[data-testid='ticketing_teams_confirm_team_button']").first
-            await next_btn.wait_for(state="attached", timeout=15000)
-            await next_btn.evaluate("el => el.click()")
+            # الضغط على "التالي: اختيار التذاكر"
+            print("الضغط على التالي...")
+            next_btn = page.locator("button:has-text('التالي: اختيار التذاكر')").first
+            await next_btn.click(force=True)
 
             # الانتظار لحين تحميل خريطة المقاعد والفئات
-            await page.wait_for_timeout(6000)
+            await page.wait_for_timeout(5000)
 
             # --- الخطوة 3: فحص المقاعد وتحديد الأعداد المتبقية ---
             report = "📊 *تقرير المقاعد المتاحة (الهلال ضد الشباب):*\n\n"
