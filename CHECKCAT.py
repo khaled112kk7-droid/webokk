@@ -14,6 +14,7 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 EVENT_URL = "https://webook.com/ar/sa/ruh/sports-event/events/rsl-26-27-al-shabab-vs-al-hilal-2279/book"
 TARGET_CATEGORIES = ["Premium", "Premium 2"]  # 
 
+# متغير تخزين المقاعد المستخرجة من الـ API
 seats_data_store = []
 
 def send_telegram(message):
@@ -26,7 +27,7 @@ def send_telegram(message):
         print(f"فشل إرسال التنبيه عبر التليجرام: {e}")
 
 async def handle_response(response):
-    """التقاط الـ API الخاص بخريطة المقاعد أثناء التحميل"""
+    """التقاط الـ API الخاص بخريطة المقاعد أثناء التحميل واستخراج بيانات المقاعد"""
     global seats_data_store
     if "seat" in response.url or "map" in response.url or "layout" in response.url:
         try:
@@ -57,6 +58,7 @@ async def run_monitor():
         context = await browser.new_context()
         page = await context.new_page()
 
+        # الاستماع للطلبات الشبكية لاقتناص استجابة الخريطة
         page.on("response", handle_response)
 
         try:
@@ -64,6 +66,7 @@ async def run_monitor():
             print("جاري فتح صفحة تسجيل الدخول...")
             await page.goto("https://webook.com/ar/login", wait_until="domcontentloaded", timeout=60000)
 
+            # إغلاق نافذة الكوكيز إذا ظهرت
             await close_cookie_banner(page)
 
             # إدخال البريد الإلكتروني
@@ -72,6 +75,7 @@ async def run_monitor():
             await email_input.fill(str(PHONE))
             await page.wait_for_timeout(1000)
 
+            # الضغط على زر "تابع باستخدام البريد الإلكتروني"
             try:
                 await email_input.press("Enter")
             except Exception:
@@ -84,48 +88,51 @@ async def run_monitor():
             await password_input.fill(str(PASSWORD))
             await page.wait_for_timeout(1000)
 
+            # الضغط على زر "تسجيل الدخول"
             try:
                 await password_input.press("Enter")
             except Exception:
                 login_btn = page.locator("button:has-text('تسجيل الدخول')").first
                 await login_btn.click(force=True)
 
+            await page.wait_for_timeout(3000)
             print("تم تسجيل الدخول بنجاح!")
-            await page.wait_for_timeout(4000)
 
-            # --- الخطوة 2: تصحيح خطوة اختيار الفريق (بدون goto وبمحدد مضمّن) ---
+            # --- الخطوة 2: الانتقال للفعالية واختيار الفريق بالمحددات المحددة ---
+            print("الانتقال لصفحة الفعالية...")
+            await page.goto(EVENT_URL, wait_until="domcontentloaded", timeout=60000)
+
+            # إغلاق الكوكيز مرة أخرى لو ظهرت في صفحة الفعالية
+            await close_cookie_banner(page)
+
+            # 1. اختيار بطاقة فريق الهلال
             print("اختيار فريق الهلال...")
-            
-            # محدد الهلال الدقيق القادم مباشرة من الـ DOM الخاص بـ Webook
-            hilal_team = page.locator("button[role='radio'][data-testid^='ui_toggle_favorite_team']").first
-            
-            if not await hilal_team.count():
-                hilal_team = page.locator("button[role='radio']:has-text('الهلال'), button:has(img[alt='الهلال'])").first
-
+            hilal_team = page.locator("[data-testid='ui_toggle_favorite_team_651fdc90492867952e046ae2']").first
             await hilal_team.wait_for(state="attached", timeout=30000)
             await hilal_team.evaluate("el => el.click()")
-            print("تم الضغط على زر الهلال بنجاح.")
             await page.wait_for_timeout(1000)
 
-            # تحديد مربع الموافقة
+            # 2. تحديد زر "أوافق"
             print("تحديد الموافقة...")
             agree_checkbox = page.locator("[data-testid='ticketing_teams_terms_checkbox']").first
             await agree_checkbox.wait_for(state="attached", timeout=15000)
             await agree_checkbox.evaluate("el => el.click()")
             await page.wait_for_timeout(1000)
 
-            # الضغط على زر التالي
-            print("الضغط على التالي...")
+            # 3. الضغط على زر "التالي"
+            print("الضغط على زر التالي...")
             next_btn = page.locator("[data-testid='ticketing_teams_confirm_team_button']").first
             await next_btn.wait_for(state="attached", timeout=15000)
             await next_btn.evaluate("el => el.click()")
 
+            # الانتظار لحين تحميل خريطة المقاعد والفئات
             await page.wait_for_timeout(6000)
 
             # --- الخطوة 3: فحص المقاعد وتحديد الأعداد المتبقية ---
             report = "📊 *تقرير المقاعد المتاحة (الهلال ضد الشباب):*\n\n"
             send_alert = False
 
+            # أ) في حال اقتناص بيانات الخريطة من API
             if seats_data_store:
                 for category in TARGET_CATEGORIES:
                     available_count = len([
@@ -136,6 +143,8 @@ async def run_monitor():
                     report += f"🔹 *{category}:* متبقي `{available_count}` مقعد.\n"
                     if available_count > 0:
                         send_alert = True
+
+            # ب) في حال الاعتماد على الفحص البصري للمكونات
             else:
                 for category in TARGET_CATEGORIES:
                     cat_locator = page.locator(f"text='{category}'")
