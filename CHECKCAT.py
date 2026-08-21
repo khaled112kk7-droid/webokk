@@ -44,10 +44,10 @@ async def close_cookie_banner(page):
     """إغلاق نافذة موافقة الكوكيز تلقائياً إذا ظهرت"""
     try:
         cookie_btn = page.locator("button:has-text('قبول الكل'), button:has-text('رفض الكل الغير ضروري')").first
-        if await cookie_btn.is_visible(timeout=3000):
+        if await cookie_btn.is_visible(timeout=5000):
             await cookie_btn.click(force=True)
             print("تم إغلاق نافذة الكوكيز بنجاح.")
-            await page.wait_for_timeout(1000)
+            await page.wait_for_timeout(2000)
     except Exception:
         pass
 
@@ -64,16 +64,17 @@ async def run_monitor():
         try:
             # --- الخطوة 1: تسجيل الدخول ---
             print("جاري فتح صفحة تسجيل الدخول...")
-            await page.goto("https://webook.com/ar/login", wait_until="networkidle")
+            await page.goto("https://webook.com/ar/login", wait_until="domcontentloaded")
+            await page.wait_for_timeout(3000)
 
             # إغلاق نافذة الكوكيز إذا ظهرت
             await close_cookie_banner(page)
 
             # إدخال البريد الإلكتروني
             email_input = page.locator("input[type='email'], input[placeholder*='you@email.com']").first
-            await email_input.wait_for(timeout=15000)
+            await email_input.wait_for(timeout=30000)
             await email_input.fill(str(PHONE))
-            await page.wait_for_timeout(1000)
+            await page.wait_for_timeout(2000)
 
             # الضغط على زر "تابع باستخدام البريد الإلكتروني"
             try:
@@ -84,9 +85,9 @@ async def run_monitor():
 
             # إدخال كلمة المرور
             password_input = page.locator("input[type='password']").first
-            await password_input.wait_for(timeout=15000)
+            await password_input.wait_for(timeout=30000)
             await password_input.fill(str(PASSWORD))
-            await page.wait_for_timeout(1000)
+            await page.wait_for_timeout(2000)
 
             # الضغط على زر "تسجيل الدخول"
             try:
@@ -95,38 +96,41 @@ async def run_monitor():
                 login_btn = page.locator("button:has-text('تسجيل الدخول')").first
                 await login_btn.click(force=True)
 
-            await page.wait_for_timeout(3000)
+            await page.wait_for_timeout(5000)
             print("تم تسجيل الدخول بنجاح!")
 
-            # --- الخطوة 2: الانتقال للفعالية واختيار الفريق بالمحددات الدقيقة ---
+            # --- الخطوة 2: الانتقال للفعالية واختيار الفريق بالمحددات المباشرة ---
             print("الانتقال لصفحة الفعالية...")
-            await page.goto(EVENT_URL, wait_until="networkidle")
+            await page.goto(EVENT_URL, wait_until="domcontentloaded")
+            
+            # زيادة وقت الانتظار لاستقرار تحميل الصفحة بالكامل (10 ثواني)
+            await page.wait_for_timeout(10000)
 
             # إغلاق الكوكيز لو ظهرت
             await close_cookie_banner(page)
 
-            # 1. اختيار بطاقة فريق الهلال عبر data-testid
+            # 1. اختيار بطاقة فريق الهلال عبر data-testid (رفع مهلة الانتظار إلى 60 ثانية)
             print("اختيار فريق الهلال...")
             hilal_card = page.locator("[data-testid='ui_toggle_favorite_team_651fdc90492867952e046ae2']").first
-            await hilal_card.wait_for(state="visible", timeout=30000)
+            await hilal_card.wait_for(state="visible", timeout=60000)
             await hilal_card.click(force=True)
-            await page.wait_for_timeout(1000)
+            await page.wait_for_timeout(3000)
 
-            # 2. تحديد زر "أوافق" عبر data-testid
+            # 2. تحديد زر "أوافق" عبر data-testid (رفع مهلة الانتظار إلى 30 ثانية)
             print("تحديد مربع الموافقة...")
             terms_checkbox = page.locator("[data-testid='ticketing_teams_terms_checkbox']").first
-            await terms_checkbox.wait_for(state="visible", timeout=15000)
+            await terms_checkbox.wait_for(state="visible", timeout=30000)
             await terms_checkbox.click(force=True)
-            await page.wait_for_timeout(1000)
+            await page.wait_for_timeout(3000)
 
-            # 3. الضغط على زر "التالي" عبر data-testid
+            # 3. الضغط على زر "التالي" عبر data-testid (رفع مهلة الانتظار إلى 30 ثانية)
             print("الضغط على زر التالي...")
             confirm_button = page.locator("[data-testid='ticketing_teams_confirm_team_button']").first
-            await confirm_button.wait_for(state="visible", timeout=15000)
+            await confirm_button.wait_for(state="visible", timeout=30000)
             await confirm_button.click(force=True)
 
             # الانتظار لحين تحميل خريطة المقاعد والفئات
-            await page.wait_for_timeout(5000)
+            await page.wait_for_timeout(8000)
 
             # --- الخطوة 3: فحص المقاعد وتحديد الأعداد المتبقية ---
             report = "📊 *تقرير المقاعد المتاحة (الهلال ضد الشباب):*\n\n"
