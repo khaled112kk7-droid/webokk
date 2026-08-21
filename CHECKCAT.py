@@ -105,22 +105,23 @@ async def run_monitor():
             # إغلاق الكوكيز مرة أخرى لو ظهرت في صفحة الفعالية
             await close_cookie_banner(page)
 
-            # اختيار زر فريق الهلال الفعلي والظاهر
+            # 1. اختيار فريق الهلال
             print("اختيار فريق الهلال...")
-            hilal_team = page.locator("button:has(p:has-text('الهلال')), button:has(img[alt*='الهلال'])").first
-            await hilal_team.wait_for(state="visible", timeout=30000)
-            await hilal_team.click(force=True)
+            hilal_element = page.locator("text='الهلال'").first
+            await hilal_element.wait_for(state="visible", timeout=30000)
+            await hilal_element.click(force=True)
+            await page.wait_for_timeout(1000)
 
-            # تحديد مربع "أوافق على حجز المقاعد..."
+            # 2. تحديد مربع "أوافق على حجز المقاعد..."
             print("تحديد الموافقة...")
-            agree_checkbox = page.locator("input[type='checkbox'], [role='checkbox']").first
-            await agree_checkbox.wait_for(state="visible", timeout=15000)
-            if not await agree_checkbox.is_checked():
-                await agree_checkbox.click(force=True)
+            agree_text = page.locator("text='أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط'").first
+            await agree_text.wait_for(state="visible", timeout=15000)
+            await agree_text.click(force=True)
+            await page.wait_for_timeout(1000)
 
-            # الضغط على "التالي: اختيار التذاكر"
+            # 3. الضغط على "التالي: اختيار التذاكر"
             print("الضغط على التالي...")
-            next_btn = page.locator("button:has-text('التالي: اختيار التذاكر')").first
+            next_btn = page.locator("button:has-text('التالي: اختيار التذاكر'), text='التالي: اختيار التذاكر'").first
             await next_btn.click(force=True)
 
             # الانتظار لحين تحميل خريطة المقاعد والفئات
