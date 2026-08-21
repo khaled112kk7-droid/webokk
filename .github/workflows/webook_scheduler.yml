@@ -27,8 +27,8 @@ jobs:
 
       - name: Run Webook Monitor
         env:
-          WEBOOK_EMIL: ${{ secrets.WEBOOK_EMIL }}
-          WEBOOK_PASS: ${{ secrets.WEBOOK_PASS }}
+          PHONE: ${{ secrets.WEBOOK_EMIL }}
+          PASSWORD: ${{ secrets.WEBOOK_PASS }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python CHECKCAT.py
