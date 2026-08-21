@@ -99,38 +99,44 @@ async def run_monitor():
             await page.wait_for_timeout(5000)
             print("تم تسجيل الدخول بنجاح!")
 
-            # --- الخطوة 2: الانتقال للفعالية واختيار الفريق بالمحددات المباشرة ---
+            # --- الخطوة 2: الانتقال للفعالية واختيار الفريق بالمحددات الأضمن ---
             print("الانتقال لصفحة الفعالية...")
             await page.goto(EVENT_URL, wait_until="domcontentloaded")
-            
-            # زيادة وقت الانتظار لاستقرار تحميل الصفحة بالكامل (10 ثواني)
-            await page.wait_for_timeout(10000)
+            await page.wait_for_timeout(5000)
 
             # إغلاق الكوكيز لو ظهرت
             await close_cookie_banner(page)
 
-            # 1. اختيار بطاقة فريق الهلال عبر data-testid (رفع مهلة الانتظار إلى 60 ثانية)
+            # 1. اختيار زر الهلال عبر الصورة أو النص الداخلي (الأضمن 100%)
             print("اختيار فريق الهلال...")
-            hilal_card = page.locator("[data-testid='ui_toggle_favorite_team_651fdc90492867952e046ae2']").first
-            await hilal_card.wait_for(state="visible", timeout=60000)
-            await hilal_card.click(force=True)
-            await page.wait_for_timeout(3000)
+            hilal_selector = "button:has(img[alt='الهلال']), button:has(img[src*='al-hilal']), button:has(p:has-text('الهلال'))"
+            hilal_btn = page.locator(hilal_selector).first
+            
+            await hilal_btn.wait_for(state="attached", timeout=40000)
+            await hilal_btn.scroll_into_view_if_needed()
+            await hilal_btn.evaluate("el => el.click()")
+            print("تم النقر على زر اختيار الهلال بنجاح.")
+            await page.wait_for_timeout(2000)
 
-            # 2. تحديد زر "أوافق" عبر data-testid (رفع مهلة الانتظار إلى 30 ثانية)
+            # 2. تحديد زر "أوافق" (ticketing_teams_terms_checkbox)
             print("تحديد مربع الموافقة...")
-            terms_checkbox = page.locator("[data-testid='ticketing_teams_terms_checkbox']").first
-            await terms_checkbox.wait_for(state="visible", timeout=30000)
-            await terms_checkbox.click(force=True)
-            await page.wait_for_timeout(3000)
+            terms_checkbox = page.locator("[data-testid='ticketing_teams_terms_checkbox'], button[role='checkbox']").first
+            await terms_checkbox.wait_for(state="attached", timeout=20000)
+            await terms_checkbox.scroll_into_view_if_needed()
+            await terms_checkbox.evaluate("el => el.click()")
+            print("تم تحديد مربع الموافقة.")
+            await page.wait_for_timeout(1500)
 
-            # 3. الضغط على زر "التالي" عبر data-testid (رفع مهلة الانتظار إلى 30 ثانية)
+            # 3. الضغط على زر "التالي" (ticketing_teams_confirm_team_button)
             print("الضغط على زر التالي...")
-            confirm_button = page.locator("[data-testid='ticketing_teams_confirm_team_button']").first
-            await confirm_button.wait_for(state="visible", timeout=30000)
-            await confirm_button.click(force=True)
+            confirm_button = page.locator("[data-testid='ticketing_teams_confirm_team_button'], button:has-text('التالي')").first
+            await confirm_button.wait_for(state="attached", timeout=20000)
+            await confirm_button.scroll_into_view_if_needed()
+            await confirm_button.evaluate("el => el.click()")
+            print("تم الضغط على زر التالي بنجاح.")
 
             # الانتظار لحين تحميل خريطة المقاعد والفئات
-            await page.wait_for_timeout(8000)
+            await page.wait_for_timeout(6000)
 
             # --- الخطوة 3: فحص المقاعد وتحديد الأعداد المتبقية ---
             report = "📊 *تقرير المقاعد المتاحة (الهلال ضد الشباب):*\n\n"
