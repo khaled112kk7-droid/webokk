@@ -11,8 +11,8 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 # 2. إعدادات الفعالية والفئات المطلوب مراقبتها
-EVENT_URL = "https://webook.com/ar/sa/ruh/sports-event/events/rsl-26-27-al-shabab-vs-al-hilal-2279/book"
-TARGET_CATEGORIES = ["Premium 2", "Premium"]  # عدل أسماء الفئات المطلوبة هنا
+EVENT_URL = "https://webook.com/ar/sa/ruh/sports-event/events/rsl-26-27-al-shabab-vs-al-hilal-2279"
+TARGET_CATEGORIES = ["CAT 1", "CAT 2"]  # عدل أسماء الفئات المطلوبة هنا
 
 # متغير تخزين المقاعد المستخرجة من الـ API
 seats_data_store = []
@@ -40,6 +40,17 @@ async def handle_response(response):
         except Exception:
             pass
 
+async def close_cookie_banner(page):
+    """إغلاق نافذة موافقة الكوكيز تلقائياً إذا ظهرت"""
+    try:
+        cookie_btn = page.locator("button:has-text('قبول الكل'), button:has-text('رفض الكل الغير ضروري')").first
+        if await cookie_btn.is_visible(timeout=3000):
+            await cookie_btn.click(force=True)
+            print("تم إغلاق نافذة الكوكيز بنجاح.")
+            await page.wait_for_timeout(1000)
+    except Exception:
+        pass
+
 async def run_monitor():
     global seats_data_store
     async with async_playwright() as p:
@@ -53,29 +64,46 @@ async def run_monitor():
         try:
             # --- الخطوة 1: تسجيل الدخول ---
             print("جاري فتح صفحة تسجيل الدخول...")
-            await page.goto("https://webook.com/ar/login")
+            await page.goto("https://webook.com/ar/login", wait_until="networkidle")
 
-            # إدخال البريد الإلكتروني والضغط على المتابعة
+            # إغلاق نافذة الكوكيز إذا ظهرت
+            await close_cookie_banner(page)
+
+            # إدخال البريد الإلكتروني
             email_input = page.locator("input[type='email'], input[placeholder*='you@email.com']").first
             await email_input.wait_for(timeout=15000)
             await email_input.fill(str(PHONE))
+            await page.wait_for_timeout(1000)
 
-            continue_btn = page.locator("button:has-text('تابع باستخدام البريد الإلكتروني')")
-            await continue_btn.click()
+            # الضغط على زر "تابع باستخدام البريد الإلكتروني"
+            try:
+                await email_input.press("Enter")
+            except Exception:
+                continue_btn = page.locator("button:has-text('تابع باستخدام البريد الإلكتروني')").first
+                await continue_btn.click(force=True)
 
-            # إدخال كلمة المرور والضغط على تسجيل الدخول
+            # إدخال كلمة المرور
             password_input = page.locator("input[type='password']").first
             await password_input.wait_for(timeout=15000)
             await password_input.fill(str(PASSWORD))
+            await page.wait_for_timeout(1000)
 
-            login_btn = page.locator("button:has-text('تسجيل الدخول')")
-            await login_btn.click()
+            # الضغط على زر "تسجيل الدخول"
+            try:
+                await password_input.press("Enter")
+            except Exception:
+                login_btn = page.locator("button:has-text('تسجيل الدخول')").first
+                await login_btn.click(force=True)
+
             await page.wait_for_timeout(3000)
             print("تم تسجيل الدخول بنجاح!")
 
             # --- الخطوة 2: الانتقال للفعالية واختيار الفريق ---
             print("الانتقال لصفحة الفعالية...")
             await page.goto(EVENT_URL)
+
+            # إغلاق الكوكيز مرة أخرى لو ظهرت في صفحة الفعالية
+            await close_cookie_banner(page)
 
             # اختيار فريق الهلال
             print("اختيار فريق الهلال...")
