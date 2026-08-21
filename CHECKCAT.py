@@ -12,7 +12,7 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 # 2. إعدادات الفعالية والفئات المطلوب مراقبتها
 EVENT_URL = "https://webook.com/ar/sa/ruh/sports-event/events/rsl-26-27-al-shabab-vs-al-hilal-2279/book"
-TARGET_CATEGORIES = ["CAT 1", "CAT 2"]  # عدل أسماء الفئات المطلوبة هنا
+TARGET_CATEGORIES = ["Premium", "Premium 2"]  # عدل أسماء الفئات المطلوبة هنا
 
 # متغير تخزين المقاعد المستخرجة من الـ API
 seats_data_store = []
