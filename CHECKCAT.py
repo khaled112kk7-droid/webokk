@@ -4,16 +4,15 @@ import json
 import requests
 from playwright.async_api import async_playwright
 
-# 1. جلب البيانات من متغيرات البيئة السريّة (Environment Variables)
+# 1. جلب البيانات السرية من متغيرات البيئة (GitHub Secrets)
 PHONE = os.getenv("WEBOOK_EMIL")
 PASSWORD = os.getenv("WEBOOK_PASS")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 # 2. إعدادات الفعالية والفئات المطلوب مراقبتها
-EVENT_URL = "https://webook.com/ar/events/events/rsl-26-27-al-shabab-vs-al-hilal-227984/book" # استبدله برابط الفعالية
-TEAM_NAME = "الهلال" # اسم زر الفريق لتحديده (أو اتركه فارغاً "" إذا لم يوجد)
-TARGET_CATEGORIES = ["Premium 2", "Premium"] # اسم الفئتين المراد حسابهما
+EVENT_URL = "https://webook.com/ar/sa/ruh/sports-event/events/rsl-26-27-al-shabab-vs-al-hilal-2279/book"
+TARGET_CATEGORIES = ["Premium 2", "Premium"]  # عدل أسماء الفئات المطلوبة هنا
 
 # متغير تخزين المقاعد المستخرجة من الـ API
 seats_data_store = []
@@ -34,7 +33,6 @@ async def handle_response(response):
         try:
             if response.status == 200 and "json" in response.headers.get("content-type", ""):
                 data = await response.json()
-                # البحث عن مصفوفة المقاعد داخل الـ JSON
                 if isinstance(data, dict):
                     seats_data_store = data.get("seats", data.get("data", []))
                 elif isinstance(data, list):
@@ -49,42 +47,63 @@ async def run_monitor():
         context = await browser.new_context()
         page = await context.new_page()
 
-        # استماع للطلبات الشبكية لاقتناص استجابة خريطة المقاعد
+        # الاستماع للطلبات الشبكية لاقتناص استجابة الخريطة
         page.on("response", handle_response)
 
         try:
-            # الخطوة 1: تسجيل الدخول
-            print("جاري تسجيل الدخول...")
+            # --- الخطوة 1: تسجيل الدخول ---
+            print("جاري فتح صفحة تسجيل الدخول...")
             await page.goto("https://webook.com/ar/login")
-            await page.fill("input[type='tel']", PHONE)
-            await page.fill("input[type='password']", PASSWORD)
-            await page.click("button[type='submit']")
-            await page.wait_for_navigation(timeout=15000)
 
-            # الخطوة 2: الانتقال لصفحة الفعالية
+            # إدخال البريد الإلكتروني والضغط على المتابعة
+            email_input = page.locator("input[type='email'], input[placeholder*='you@email.com']").first
+            await email_input.wait_for(timeout=15000)
+            await email_input.fill(str(PHONE))
+
+            continue_btn = page.locator("button:has-text('تابع باستخدام البريد الإلكتروني')")
+            await continue_btn.click()
+
+            # إدخال كلمة المرور والضغط على تسجيل الدخول
+            password_input = page.locator("input[type='password']").first
+            await password_input.wait_for(timeout=15000)
+            await password_input.fill(str(PASSWORD))
+
+            login_btn = page.locator("button:has-text('تسجيل الدخول')")
+            await login_btn.click()
+            await page.wait_for_timeout(3000)
+            print("تم تسجيل الدخول بنجاح!")
+
+            # --- الخطوة 2: الانتقال للفعالية واختيار الفريق ---
             print("الانتقال لصفحة الفعالية...")
             await page.goto(EVENT_URL)
 
-            # الخطوة 3: اختيار الفريق (إن وجد)
-            if TEAM_NAME:
-                try:
-                    team_btn = page.locator(f"text='{TEAM_NAME}'")
-                    if await team_btn.is_visible():
-                        await team_btn.click()
-                except Exception:
-                    pass
+            # اختيار فريق الهلال
+            print("اختيار فريق الهلال...")
+            hilal_team = page.locator("text='الهلال'").first
+            await hilal_team.wait_for(timeout=15000)
+            await hilal_team.click()
 
-            # الانتظار لحين تحميل عناصر الفئات/الخريطة
+            # تحديد مربع "أوافق على حجز المقاعد..."
+            print("تحديد الموافقة...")
+            agree_checkbox = page.locator("input[type='checkbox'], [role='checkbox']").first
+            if not await agree_checkbox.is_checked():
+                await agree_checkbox.click()
+
+            # الضغط على "التالي: اختيار التذاكر"
+            print("الضغط على التالي...")
+            next_btn = page.locator("button:has-text('التالي: اختيار التذاكر')").first
+            await next_btn.click()
+
+            # الانتظار لحين تحميل خريطة المقاعد والفئات
             await page.wait_for_timeout(5000)
 
-            # الخطوة 4: معالجة البيانات واستخراج أعداد المقاعد المتبقية لكل فئة
-            report = "📊 *تقرير المقاعد المتاحة في ويبوك:*\n\n"
+            # --- الخطوة 3: فحص المقاعد وتحديد الأعداد المتبقية ---
+            report = "📊 *تقرير المقاعد المتاحة (الهلال ضد الشباب):*\n\n"
             send_alert = False
 
-            # أ) إذا تم اقتناص بيانات الخريطة برمجياً (الأدق بالعدد)
+            # أ) في حال اقتناص بيانات الخريطة من API
             if seats_data_store:
                 for category in TARGET_CATEGORIES:
-                    # فلترة المقاعد المتاحة التي تنتمي للفئة المحددة
                     available_count = len([
                         s for s in seats_data_store 
                         if s.get("status") == "AVAILABLE" and category.lower() in str(s.get("category", "")).lower()
@@ -94,7 +113,7 @@ async def run_monitor():
                     if available_count > 0:
                         send_alert = True
 
-            # ب) إذا لم نلتقط الخريطة، نعتمد على القراءة البصرية للصفحة
+            # ب) في حال الاعتماد على الفحص البصري للمكونات
             else:
                 for category in TARGET_CATEGORIES:
                     cat_locator = page.locator(f"text='{category}'")
@@ -110,7 +129,7 @@ async def run_monitor():
                     else:
                         report += f"⚠️ *{category}:* غير ظاهرة بالقائمة.\n"
 
-            # الخطوة 5: إرسال التنبيه
+            # --- الخطوة 4: إرسال التقرير عبر التليجرام ---
             if send_alert:
                 send_telegram(report)
                 print("تم إرسال التقرير للتليجرام بنجاح!")
