@@ -12,7 +12,7 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 # 2. رابط الفعالية والفئات المطلوب مراقبتها
 EVENT_URL = "https://webook.com/ar/sa/ruh/sports-event/events/rsl-26-27-al-shabab-vs-al-hilal-2279/book"
-TARGET_CATEGORIES = ["Premium", "Premium 2"]  # عدل أسماء الفئات المطلوبة هنا
+TARGET_CATEGORIES = ["Premium", "Premium 2"]  # 
 
 # متغير تخزين المقاعد المستخرجة من الـ API
 seats_data_store = []
@@ -62,20 +62,21 @@ async def run_monitor():
         page.on("response", handle_response)
 
         try:
-            # --- الخطوة 1: تسجيل الدخول عبر رابط الفعالية مباشرة ---
-            print("جاري فتح صفحة الفعالية للبدء بتسجيل الدخول...")
-            await page.goto(EVENT_URL, wait_until="networkidle")
+            # --- الخطوة 1: الدخول لرابط الفعالية أولاً ---
+            print("جاري فتح رابط الفعالية...")
+            await page.goto(EVENT_URL, wait_until="domcontentloaded", timeout=60000)
 
             # إغلاق نافذة الكوكيز إذا ظهرت
             await close_cookie_banner(page)
 
-            # إدخال البريد الإلكتروني
+            # --- الخطوة 2: إدخال بيانات تسجيل الدخول على نفس الصفحة ---
+            print("إدخال بيانات تسجيل الدخول...")
             email_input = page.locator("input[type='email'], input[placeholder*='you@email.com']").first
-            await email_input.wait_for(timeout=15000)
+            await email_input.wait_for(timeout=20000)
             await email_input.fill(str(PHONE))
             await page.wait_for_timeout(1000)
 
-            # الضغط على زر "تابع باستخدام البريد الإلكتروني"
+            # الضغط على زر المتابعة
             try:
                 await email_input.press("Enter")
             except Exception:
@@ -84,46 +85,46 @@ async def run_monitor():
 
             # إدخال كلمة المرور
             password_input = page.locator("input[type='password']").first
-            await password_input.wait_for(timeout=15000)
+            await password_input.wait_for(timeout=20000)
             await password_input.fill(str(PASSWORD))
             await page.wait_for_timeout(1000)
 
-            # الضغط على زر "تسجيل الدخول"
+            # الضغط على زر تسجيل الدخول
             try:
                 await password_input.press("Enter")
             except Exception:
                 login_btn = page.locator("button:has-text('تسجيل الدخول')").first
                 await login_btn.click(force=True)
 
-            await page.wait_for_timeout(3000)
-            print("تم تسجيل الدخول بنجاح! نواصل في نفس الصفحة دون إعادة توجيه...")
+            print("تم تسجيل الدخول بنجاح! المواصلة في نفس الصفحة لخطوة اختيار الفريق...")
+            await page.wait_for_timeout(4000)
 
-            # --- الخطوة 2: اختيار الفريق بالمحددات الدقيقة على نفس الصفحة ---
+            # --- الخطوة 3: اختيار الفريق عبر data-testid على نفس الصفحة ---
             
-            # 1. اختيار بطاقة فريق الهلال عبر data-testid
+            # 1. اختيار بطاقة فريق الهلال
             print("اختيار فريق الهلال...")
             hilal_card = page.locator("[data-testid='ui_toggle_favorite_team_651fdc90492867952e046ae2']").first
-            await hilal_card.wait_for(state="visible", timeout=30000)
-            await hilal_card.click(force=True)
+            await hilal_card.wait_for(state="attached", timeout=30000)
+            await hilal_card.evaluate("el => el.click()")
             await page.wait_for_timeout(1000)
 
-            # 2. تحديد زر "أوافق" عبر data-testid
+            # 2. تحديد زر "أوافق"
             print("تحديد مربع الموافقة...")
             terms_checkbox = page.locator("[data-testid='ticketing_teams_terms_checkbox']").first
-            await terms_checkbox.wait_for(state="visible", timeout=15000)
-            await terms_checkbox.click(force=True)
+            await terms_checkbox.wait_for(state="attached", timeout=15000)
+            await terms_checkbox.evaluate("el => el.click()")
             await page.wait_for_timeout(1000)
 
-            # 3. الضغط على زر "التالي" عبر data-testid
+            # 3. الضغط على زر "التالي"
             print("الضغط على زر التالي...")
             confirm_button = page.locator("[data-testid='ticketing_teams_confirm_team_button']").first
-            await confirm_button.wait_for(state="visible", timeout=15000)
-            await confirm_button.click(force=True)
+            await confirm_button.wait_for(state="attached", timeout=15000)
+            await confirm_button.evaluate("el => el.click()")
 
             # الانتظار لحين تحميل خريطة المقاعد والفئات
-            await page.wait_for_timeout(5000)
+            await page.wait_for_timeout(6000)
 
-            # --- الخطوة 3: فحص المقاعد وتحديد الأعداد المتبقية ---
+            # --- الخطوة 4: فحص المقاعد وتحديد الأعداد المتبقية ---
             report = "📊 *تقرير المقاعد المتاحة (الهلال ضد الشباب):*\n\n"
             send_alert = False
 
@@ -155,7 +156,7 @@ async def run_monitor():
                     else:
                         report += f"⚠️ *{category}:* غير ظاهرة بالقائمة.\n"
 
-            # --- الخطوة 4: إرسال التقرير عبر التليجرام ---
+            # --- الخطوة 5: إرسال التقرير عبر التليجرام ---
             if send_alert:
                 send_telegram(report)
                 print("تم إرسال التقرير للتليجرام بنجاح!")
