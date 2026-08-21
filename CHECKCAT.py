@@ -100,27 +100,28 @@ async def run_monitor():
 
             # --- الخطوة 2: الانتقال للفعالية واختيار الفريق ---
             print("الانتقال لصفحة الفعالية...")
-            await page.goto(EVENT_URL)
+            await page.goto(EVENT_URL, wait_until="networkidle")
 
             # إغلاق الكوكيز مرة أخرى لو ظهرت في صفحة الفعالية
             await close_cookie_banner(page)
 
-            # اختيار فريق الهلال
+            # اختيار فريق الهلال (محدث بناءً على كود العنصر المستخرج)
             print("اختيار فريق الهلال...")
-            hilal_team = page.locator("text='الهلال'").first
-            await hilal_team.wait_for(timeout=15000)
-            await hilal_team.click()
+            hilal_team = page.locator("img[src*='al-hilal'], button:has-text('الهلال')").first
+            await hilal_team.wait_for(state="visible", timeout=30000)
+            await hilal_team.click(force=True)
 
             # تحديد مربع "أوافق على حجز المقاعد..."
             print("تحديد الموافقة...")
             agree_checkbox = page.locator("input[type='checkbox'], [role='checkbox']").first
+            await agree_checkbox.wait_for(state="visible", timeout=15000)
             if not await agree_checkbox.is_checked():
-                await agree_checkbox.click()
+                await agree_checkbox.click(force=True)
 
             # الضغط على "التالي: اختيار التذاكر"
             print("الضغط على التالي...")
             next_btn = page.locator("button:has-text('التالي: اختيار التذاكر')").first
-            await next_btn.click()
+            await next_btn.click(force=True)
 
             # الانتظار لحين تحميل خريطة المقاعد والفئات
             await page.wait_for_timeout(5000)
