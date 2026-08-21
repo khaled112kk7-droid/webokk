@@ -105,9 +105,9 @@ async def run_monitor():
             # إغلاق الكوكيز مرة أخرى لو ظهرت في صفحة الفعالية
             await close_cookie_banner(page)
 
-            # اختيار فريق الهلال (محدث بناءً على كود العنصر المستخرج)
+            # اختيار زر فريق الهلال الفعلي والظاهر
             print("اختيار فريق الهلال...")
-            hilal_team = page.locator("img[src*='al-hilal'], button:has-text('الهلال')").first
+            hilal_team = page.locator("button:has(p:has-text('الهلال')), button:has(img[alt*='الهلال'])").first
             await hilal_team.wait_for(state="visible", timeout=30000)
             await hilal_team.click(force=True)
 
