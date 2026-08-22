@@ -24,32 +24,35 @@ def send_telegram(message):
         print(f"فشل إرسال التنبيه عبر التليجرام: {e}")
 
 async def solve_turnstile_captcha(page, sitekey):
+    """حل كابتشا Turnstile وإرسال الـ Token مباشرة إلى الصفحة"""
     if not CAPTCHA_API_KEY:
         print("⚠️ لم يتم ضبط CAPTCHA_API_KEY في GitHub Secrets.")
         return False
 
-    print("🧩 جاري إرسال الكابتشا لخدمة الحل التلقائي...")
+    print("🧩 جاري إرسال الكابتشا لخدمة 2Captcha للحل...")
     req_url = f"http://2captcha.com/in.php?key={CAPTCHA_API_KEY}&method=turnstile&sitekey={sitekey}&pageurl={page.url}&json=1"
     res = requests.get(req_url).json()
 
     if res.get("status") != 1:
-        print(f"❌ فشل طلب حل الكابتشا: {res.get('request')}")
+        print(f"❌ فشل إرسال الكابتشا: {res.get('request')}")
         return False
 
     request_id = res.get("request")
     fetch_url = f"http://2captcha.com/res.php?key={CAPTCHA_API_KEY}&action=get&id={request_id}&json=1"
 
     for _ in range(30):
-        await asyncio.sleep(5)
+        await asyncio.sleep(4)
         sol_res = requests.get(fetch_url).json()
         if sol_res.get("status") == 1:
             token = sol_res.get("request")
-            print("✅ تم استلام توكن الكابتشا بنجاح! جاري تحقينه في الصفحة...")
+            print("✅ تم استلام توكن الكابتشا! جاري تحقينه واستدعاء التجاوز...")
+            
+            # تحقين توكن الحل في نموذج الكابتشا
             await page.evaluate(f"""(token) => {{
                 const input = document.querySelector('input[name="cf-turnstile-response"]') || document.querySelector('[name="g-recaptcha-response"]');
                 if (input) {{ input.value = token; }}
-                if (window.turnstile) {{ 
-                    try {{ turnstile.render(); }} catch(e) {{}} 
+                if (window.turnstile) {{
+                    try {{ turnstile.render(); }} catch(e) {{}}
                 }}
             }}""", token)
             await page.wait_for_timeout(2000)
@@ -95,6 +98,7 @@ async def run_monitor():
             await page.goto(EVENT_URL, wait_until="networkidle")
             await close_cookie_banner(page)
 
+            # تسجيل الدخول
             email_input = page.locator("input[type='email'], input[placeholder*='you@email.com']").first
             if await email_input.is_visible(timeout=5000):
                 print("جاري إدخال البريد الإلكتروني...")
@@ -120,10 +124,11 @@ async def run_monitor():
                     await login_btn.click(force=True)
 
                 await page.wait_for_timeout(3000)
-                print("تم تسجيل الدخول بنجاح داخل التدفق!")
+                print("تم تسجيل الدخول بنجاح!")
 
                 await close_cookie_banner(page)
 
+                # اختيار الفريق والموافقة
                 print("جاري النقر على (الهلال)...")
                 await page.evaluate("""() => {
                     const pElements = Array.from(document.querySelectorAll('p'));
@@ -144,6 +149,7 @@ async def run_monitor():
                 }""")
                 await page.wait_for_timeout(1500)
 
+                # Step: الضغط على زر (التالي: اختيار التذاكر)
                 print("جاري النقر على زر (التالي: اختيار التذاكر)...")
                 await page.evaluate("""() => {
                     const buttons = Array.from(document.querySelectorAll('button'));
@@ -152,36 +158,37 @@ async def run_monitor():
                 }""")
                 print("✅ تم الضغط على (التالي: اختيار التذاكر).")
 
-            await page.wait_for_timeout(4000)
+            # Step: التعامل المباشر مع الكابتشا التي تظهر فوراً بعد الزر
+            await page.wait_for_timeout(3000)
             
-            # فحص حل الكابتشا إذا كانت موجودة
-            captcha_iframe = page.locator("iframe[src*='turnstile'], iframe[src*='recaptcha'], [data-sitekey]").first
-            if await captcha_iframe.is_visible(timeout=4000):
-                print("⚠️ الكابتشا حجب الصفة! جاري الحل...")
-                sitekey = await page.evaluate("""() => {
-                    const el = document.querySelector('[data-sitekey]');
-                    return el ? el.getAttribute('data-sitekey') : null;
-                }""")
-                if sitekey:
-                    solved = await solve_turnstile_captcha(page, sitekey)
-                    if solved:
-                        await page.evaluate("""() => {
-                            const buttons = Array.from(document.querySelectorAll('button'));
-                            const nextBtn = buttons.find(btn => btn.textContent.includes('التالي: اختيار التذاكر') || btn.textContent.includes('اختيار التذاكر'));
-                            if (nextBtn) nextBtn.click();
-                        }""")
+            # البحث عن وجود الكابتشا
+            sitekey = await page.evaluate("""() => {
+                const el = document.querySelector('[data-sitekey]');
+                return el ? el.getAttribute('data-sitekey') : null;
+            }""")
 
-            await page.wait_for_timeout(5000)
+            if sitekey:
+                print(f"⚠️ ظهرت الكابتشا بعد اختيار التذاكر (Sitekey: {sitekey})! جاري الحل...")
+                solved = await solve_turnstile_captcha(page, sitekey)
+                
+                if solved:
+                    print("✅ تم حل الكابتشا، جاري إعادة ضغط (التالي) لفتح خريطة المقاعد...")
+                    await page.evaluate("""() => {
+                        const buttons = Array.from(document.querySelectorAll('button'));
+                        const nextBtn = buttons.find(btn => btn.textContent.includes('التالي: اختيار التذاكر') || btn.textContent.includes('اختيار التذاكر'));
+                        if (nextBtn) nextBtn.click();
+                    }""")
 
-            # طباعة رابط الصفحة الحالية للتحقق من انتقال التوجيه
-            current_url = page.url
-            print(f"📍 الرابط الحالي بعد الخطوات: {current_url}")
+            # الانتظار الكامل لاكتمال تحويل الصفحة وفتح خريطة المقاعد
+            print("⏳ جاري انتظار تحميل خريطة المقاعد...")
+            await page.wait_for_timeout(8000)
 
+            # Step: التقرير وفحص المقاعد بعد فتح الخريطة
             report = "📊 *تقرير المقاعد المتاحة (الهلال ضد الشباب):*\n\n"
             send_alert = False
 
             if seats_data_store:
-                print("✅ تم استلام بيانات المقاعد عبر الـ API بنجاح!")
+                print("✅ تم فتح الخريطة واستخراج البيانات بنجاح عبر الـ API!")
                 for category in TARGET_CATEGORIES:
                     available_count = len([
                         s for s in seats_data_store 
@@ -191,14 +198,14 @@ async def run_monitor():
                     if available_count > 0:
                         send_alert = True
             else:
-                print("🔍 جاري فحص العناصر المباشرة بالنصوص...")
-                page_content = await page.content()
+                print("🔍 جاري فحص عناصر الصفحة مباشرة...")
+                page_text = await page.content()
                 for category in TARGET_CATEGORIES:
-                    if category in page_content:
+                    if category in page_text:
                         report += f"✅ *{category}:* متاحة الآن للحجز!\n"
                         send_alert = True
                     else:
-                        report += f"❌ *{category}:* نفدت أو غير متوفرة.\n"
+                        report += f"❌ *{category}:* غير متاحة أو نفدت.\n"
 
             if send_alert:
                 send_telegram(report)
