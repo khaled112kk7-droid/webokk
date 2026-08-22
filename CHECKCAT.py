@@ -150,32 +150,21 @@ async def run_monitor():
 
                 await close_cookie_banner(page)
 
-                # اختيار الفريق بالتحديد الدقيق لتفادي نص العنوان المخفي
+                # النقر المباشر على زر الفريق عبر favorite_team
                 print("جاري النقر على خيار (الهلال)...")
-                await page.evaluate("""() => {
-                    const elements = Array.from(document.querySelectorAll('button, div, p, span'));
-                    const target = elements.find(el => el.textContent.trim() === 'الهلال' && el.children.length === 0);
-                    if (target) {
-                        const parentBtn = target.closest('button') || target;
-                        parentBtn.click();
-                    }
-                }""")
+                hilal_btn = page.locator("button[name='favorite_team']").nth(1)
+                await hilal_btn.wait_for(state="visible", timeout=10000)
+                await hilal_btn.click(force=True)
                 await page.wait_for_timeout(1500)
 
                 print("جاري النقر على مربع الموافقة...")
-                await page.evaluate("""() => {
-                    const labels = Array.from(document.querySelectorAll('label, span, div, p'));
-                    const agreeEl = labels.find(el => el.textContent.includes('أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط'));
-                    if (agreeEl) agreeEl.click();
-                }""")
+                agree_box = page.locator("text=أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط").first
+                await agree_box.click(force=True)
                 await page.wait_for_timeout(1500)
 
                 print("جاري النقر على زر (التالي: اختيار التذاكر)...")
-                await page.evaluate("""() => {
-                    const buttons = Array.from(document.querySelectorAll('button'));
-                    const nextBtn = buttons.find(btn => btn.textContent.includes('التالي: اختيار التذاكر') || btn.textContent.includes('اختيار التذاكر'));
-                    if (nextBtn) nextBtn.click();
-                }""")
+                next_btn = page.locator("button:has-text('التالي: اختيار التذاكر'), button:has-text('اختيار التذاكر')").first
+                await next_btn.click(force=True)
                 print("✅ تم الضغط على زر اختيار التذاكر.")
 
             # انتظار ظهور إطار الكابتشا
