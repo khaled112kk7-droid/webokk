@@ -150,11 +150,18 @@ async def run_monitor():
 
                 await close_cookie_banner(page)
 
-                # 1. اختيار الهلال باستهداف صورة شعار الهلال مباشرة
-                print("جاري النقر على خيار (الهلال) عبر شعار الفريق...")
-                hilal_img = page.locator("img[src*='al-hilal'], img[alt='الهلال']").first
-                await hilal_img.wait_for(state="visible", timeout=15000)
-                await hilal_img.click(force=True)
+                # 1. اختيار الهلال باستهداف الزر بدقة
+                print("جاري النقر على خيار (الهلال)...")
+
+                # يستهدف الزر الذي يحتوي على النص الفرعي "الهلال" مباشرة
+                hilal_btn = page.locator("button:has(p:has-text('الهلال'))").first
+
+                # إذا لم يظهر، نجرب الاستهداف عبر testid للزر
+               if not await hilal_btn.is_visible(timeout=5000):
+                   hilal_btn = page.locator("button[data-testid*='ui_toggle_favorite_team']").nth(1)
+
+                await hilal_btn.wait_for(state="visible", timeout=20000)
+                await hilal_btn.click(force=True)
                 await page.wait_for_timeout(1000)
 
                 # 2. النقر على مربع الموافقة
