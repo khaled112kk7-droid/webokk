@@ -4,21 +4,17 @@ import json
 import requests
 from playwright.async_api import async_playwright
 
-# 1. جلب البيانات السرية من متغيرات البيئة (GitHub Secrets)
 PHONE = os.getenv("WEBOOK_EMIL")
 PASSWORD = os.getenv("WEBOOK_PASS")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# 2. رابط الفعالية والفئات المطلوب مراقبتها
-EVENT_URL = "https://webook.com/ar/sa/ruh/sports-event/events/rsl-26-27-al-shabab-vs-al-hilal-227984/book"
-TARGET_CATEGORIES = ["Premium", "Premium 2"]  # عدل أسماء الفئات المطلوبة هنا
+EVENT_URL = "https://webook.com/ar/SA/RUH/sports-event/events/rsl-26-27-al-shabab-vs-al-hilal-227984/book"
+TARGET_CATEGORIES = ["Premium", "Premium 2"]
 
-# متغير تخزين المقاعد المستخرجة من الـ API
 seats_data_store = []
 
 def send_telegram(message):
-    """إرسال التنبيه فوراً إلى التليجرام"""
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"}
     try:
@@ -27,7 +23,6 @@ def send_telegram(message):
         print(f"فشل إرسال التنبيه عبر التليجرام: {e}")
 
 async def handle_response(response):
-    """التقاط الـ API الخاص بخريطة المقاعد أثناء التحميل واستخراج بيانات المقاعد"""
     global seats_data_store
     if "seat" in response.url or "map" in response.url or "layout" in response.url:
         try:
@@ -41,13 +36,10 @@ async def handle_response(response):
             pass
 
 async def close_cookie_banner(page):
-    """إغلاق نافذة موافقة الكوكيز تلقائياً إذا ظهرت"""
     try:
-        cookie_btn = page.locator("button:has-text('قبول الكل'), button:has-text('رفض الكل الغير ضروري')").first
-        if await cookie_btn.is_visible(timeout=3000):
+        cookie_btn = page.locator("button:has-text('قبول الكل'), button:has-text('رفض الكل')").first
+        if await cookie_btn.is_visible(timeout=2000):
             await cookie_btn.click(force=True)
-            print("تم إغلاق نافذة الكوكيز بنجاح.")
-            await page.wait_for_timeout(1000)
     except Exception:
         pass
 
@@ -58,98 +50,73 @@ async def run_monitor():
         context = await browser.new_context()
         page = await context.new_page()
 
-        # الاستماع للطلبات الشبكية لاقتناص استجابة الخريطة
         page.on("response", handle_response)
 
         try:
-            # --- الخطوة 1: تسجيل الدخول ---
+            # --- تسجيل الدخول والانتظار التلقائي للتوجيه ---
             print("جاري فتح صفحة تسجيل الدخول...")
-            await page.goto("https://webook.com/ar/login", wait_until="networkidle")
-
-            # إغلاق نافذة الكوكيز إذا ظهرت
+            await page.goto("https://webook.com/ar/login", wait_until="domcontentloaded", timeout=60000)
             await close_cookie_banner(page)
 
-            # إدخال البريد الإلكتروني
             email_input = page.locator("input[type='email'], input[placeholder*='you@email.com']").first
             await email_input.wait_for(timeout=15000)
             await email_input.fill(str(PHONE))
-            await page.wait_for_timeout(1000)
 
-            # الضغط على زر "تابع باستخدام البريد الإلكتروني"
             try:
                 await email_input.press("Enter")
             except Exception:
-                continue_btn = page.locator("button:has-text('تابع باستخدام البريد الإلكتروني')").first
-                await continue_btn.click(force=True)
+                await page.locator("button:has-text('تابع باستخدام البريد الإلكتروني')").first.click(force=True)
 
-            # إدخال كلمة المرور
             password_input = page.locator("input[type='password']").first
             await password_input.wait_for(timeout=15000)
             await password_input.fill(str(PASSWORD))
-            await page.wait_for_timeout(1000)
 
-            # الضغط على زر "تسجيل الدخول"
+            print("جاري تسجيل الدخول والانتظار حتى الانتقال التلقائي...")
             try:
                 await password_input.press("Enter")
             except Exception:
-                login_btn = page.locator("button:has-text('تسجيل الدخول')").first
-                await login_btn.click(force=True)
+                await page.locator("button:has-text('تسجيل الدخول')").first.click(force=True)
 
-            await page.wait_for_timeout(3000)
-            print("تم تسجيل الدخول بنجاح!")
+            # الانتظار التلقائي لحين تغيير رابط الصفحة بعد تسجيل الدخول
+            await page.wait_for_url(lambda url: "login" not in url, timeout=30000)
+            await page.wait_for_load_state("domcontentloaded")
+            print("تم تسجيل الدخول والتوجيه بنجاح!")
 
-            # --- الخطوة 2: الانتقال للفعالية واختيار الفريق ---
-            print("الانتقال لصفحة الفعالية...")
+            # --- خطوة واحدة: فتح الفعالية واختيار الفريق والمتابعة ---
+            print("الانتقال لصفحة الفعالية واختيار الفريق...")
             await page.goto(EVENT_URL, wait_until="domcontentloaded", timeout=60000)
-
-            # إغلاق الكوكيز مرة أخرى لو ظهرت في صفحة الفعالية
             await close_cookie_banner(page)
 
-            # اختيار زر فريق الهلال الفعلي والظاهر
-            print("الهلال")
-            hilal_team = page.locator("button:has(p:has-text('الهلال')), button:has(img[alt*='الهلال'])").first
-            await hilal_team.wait_for(state="visible", timeout=30000)
-            await hilal_team.click(force=True)
-
-            # تحديد مربع "أوافق على حجز المقاعد..."
-            print("تحديد الموافقة")
+            await page.get_by_text("الهلال", exact=False).first.click(force=True)
+            
             agree_checkbox = page.locator("input[type='checkbox'], [role='checkbox']").first
-            await agree_checkbox.wait_for(state="visible", timeout=15000)
-            if not await agree_checkbox.is_checked():
-                await agree_checkbox.click(force=True)
+            if await agree_checkbox.is_visible(timeout=3000):
+                if not await agree_checkbox.is_checked():
+                    await agree_checkbox.click(force=True)
 
-            # الضغط على "التالي: اختيار التذاكر"
-            print("الضغط على التالي")
-            next_btn = page.locator("button:has-text('التالي: اختيار التذاكر')").first
-            await next_btn.click(force=True)
+            await page.locator("button:has-text('التالي'), button:has-text('اختيار التذاكر')").first.click(force=True)
 
-            # الانتظار لحين تحميل خريطة المقاعد والفئات
-            await page.wait_for_timeout(5000)
+            await page.wait_for_timeout(4000)
 
-            # --- الخطوة 3: فحص المقاعد وتحديد الأعداد المتبقية ---
+            # --- فحص المقاعد ---
             report = "📊 *تقرير المقاعد المتاحة (الهلال ضد الشباب):*\n\n"
             send_alert = False
 
-            # أ) في حال اقتناص بيانات الخريطة من API
             if seats_data_store:
                 for category in TARGET_CATEGORIES:
                     available_count = len([
                         s for s in seats_data_store 
                         if s.get("status") == "AVAILABLE" and category.lower() in str(s.get("category", "")).lower()
                     ])
-                    
                     report += f"🔹 *{category}:* متبقي `{available_count}` مقعد.\n"
                     if available_count > 0:
                         send_alert = True
-
-            # ب) في حال الاعتماد على الفحص البصري للمكونات
             else:
                 for category in TARGET_CATEGORIES:
                     cat_locator = page.locator(f"text='{category}'")
                     if await cat_locator.is_visible():
-                        parent_card = cat_locator.locator("xpath=ancestor::div[contains(@class, 'card') or contains(@class, 'item')][1]")
+                        parent_card = cat_locator.locator("xpath=ancestor::div[1]")
                         text = await parent_card.inner_text()
-                        
                         if "نفدت" in text or "Sold Out" in text:
                             report += f"❌ *{category}:* نفدت بالكامل.\n"
                         else:
@@ -158,7 +125,6 @@ async def run_monitor():
                     else:
                         report += f"⚠️ *{category}:* غير ظاهرة بالقائمة.\n"
 
-            # --- الخطوة 4: إرسال التقرير عبر التليجرام ---
             if send_alert:
                 send_telegram(report)
                 print("تم إرسال التقرير للتليجرام بنجاح!")
