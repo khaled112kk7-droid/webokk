@@ -150,38 +150,26 @@ async def run_monitor():
 
                 await close_cookie_banner(page)
 
-                # اختيار الفريق والموافقة
+                # اختيار الفريق والموافقة بالنقر المباشر
                 print("جاري النقر على (الهلال)...")
-                await page.evaluate("""() => {
-                    const pElements = Array.from(document.querySelectorAll('p'));
-                    const hilalP = pElements.find(el => el.textContent.trim() === 'الهلال');
-                    if (hilalP) {
-                        const button = hilalP.closest('button');
-                        if (button) button.click();
-                        else hilalP.click();
-                    }
-                }""")
+                hilal_btn = page.locator("button:has-text('الهلال'), p:has-text('الهلال')").first
+                await hilal_btn.click(force=True)
                 await page.wait_for_timeout(1500)
 
                 print("جاري النقر على مربع الموافقة...")
-                await page.evaluate("""() => {
-                    const labels = Array.from(document.querySelectorAll('label, span, div, p'));
-                    const agreeEl = labels.find(el => el.textContent.includes('أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط'));
-                    if (agreeEl) agreeEl.click();
-                }""")
+                agree_box = page.locator("text=أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط").first
+                await agree_box.click(force=True)
                 await page.wait_for_timeout(1500)
 
-                print("جاري النقر على زر (التالي: اختيار التذاكر)...")
-                await page.evaluate("""() => {
-                    const buttons = Array.from(document.querySelectorAll('button'));
-                    const nextBtn = buttons.find(btn => btn.textContent.includes('التالي: اختيار التذاكر') || btn.textContent.includes('اختيار التذاكر'));
-                    if (nextBtn) nextBtn.click();
-                }""")
-                print("✅ تم الضغط على (التالي: اختيار التذاكر).")
+                # نقر حقيقي لتفعيل حادثة زر التالي
+                print("جاري النقر المباشر على زر (التالي: اختيار التذاكر)...")
+                next_btn = page.locator("button:has-text('التالي: اختيار التذاكر'), button:has-text('اختيار التذاكر')").first
+                await next_btn.click(force=True)
+                print("✅ تم الضغط الحقيقي على زر اختيار التذاكر.")
 
-            # انتظار ديناميكي لكشف وجود الكابتشا
-            print("⏳ جاري فحص وجود كابتشا Cloudflare...")
-            for _ in range(8):
+            # انتظار ظهور إطار الكابتشا حتى 12 ثانية
+            print("⏳ جاري انتظار واكتشاف كابتشا Cloudflare...")
+            for _ in range(12):
                 await page.wait_for_timeout(1000)
                 if not detected_sitekey:
                     detected_sitekey = await page.evaluate("""() => {
@@ -190,7 +178,7 @@ async def run_monitor():
                         
                         const iframes = Array.from(document.querySelectorAll('iframe'));
                         for (let iframe of iframes) {
-                            if (iframe.src.includes('challenges.cloudflare.com')) {
+                            if (iframe.src.includes('challenges.cloudflare.com') || iframe.src.includes('turnstile')) {
                                 const match = iframe.src.match(/k=([^&]+)/) || iframe.src.match(/sitekey=([^&]+)/);
                                 if (match) return match[1];
                             }
@@ -204,11 +192,10 @@ async def run_monitor():
                 print(f"⚠️ تم رصد الكابتشا (Sitekey: {detected_sitekey})! جاري إرسالها للحل...")
                 solved = await solve_turnstile_captcha(page, detected_sitekey)
                 if solved:
-                    print("✅ تم التحقين بنجاح، جاري الانتظار للانتقال التلقائي لخريطة المقاعد...")
+                    print("✅ تم تحقين التوكن بنجاح! جاري الانتظار للانتقال إلى الخريطة...")
             else:
-                print("ℹ️ لم تظهر كابتشا في هذه المحاولة، جاري متابعة فتح الخريطة...")
+                print("⚠️ لم يظهر إطار الكابتشا المباشر، جاري فحص استجابة الشبكة والتحويل...")
 
-            # انتظار التحويل التلقائي وفتح الخريطة واقتناص الـ API
             print("⏳ جاري انتظار فتح خريطة المقاعد واقتناص الـ API...")
             await page.wait_for_timeout(10000)
 
