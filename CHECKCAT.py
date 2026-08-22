@@ -158,7 +158,7 @@ async def run_monitor():
 
                 # إذا لم يظهر، نجرب الاستهداف عبر testid للزر
                if not await hilal_btn.is_visible(timeout=5000):
-                   hilal_btn = page.locator("button[data-testid*='ui_toggle_favorite_team']").nth(1)
+                   hilal_btn = page.locator("button[data-testid*='ui_toggle_favorite_team_651fdc90492867952e046ae2']").nth(1)
 
                 await hilal_btn.wait_for(state="visible", timeout=20000)
                 await hilal_btn.click(force=True)
