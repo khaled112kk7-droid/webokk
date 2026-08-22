@@ -65,50 +65,42 @@ async def run_monitor():
         page.on("response", handle_response)
 
         try:
-            # --- الخطوة 1: تسجيل الدخول (الكود الأصلي بالكامل) ---
-            print("جاري فتح صفحة تسجيل الدخول...")
-            await page.goto("https://webook.com/ar/login", wait_until="networkidle")
-
-            # إغلاق نافذة الكوكيز إذا ظهرت
+            # --- الخطوة 1: الدخول المباشر لصفحة الفعالية ---
+            print("الانتقال المباشر لصفحة الفعالية...")
+            await page.goto(EVENT_URL, wait_until="networkidle")
             await close_cookie_banner(page)
 
-            # إدخال البريد الإلكتروني
+            # --- الخطوة 2: تسجيل الدخول التلقائي في حال تم التوجيه لنماذج الدخول ---
             email_input = page.locator("input[type='email'], input[placeholder*='you@email.com']").first
-            await email_input.wait_for(timeout=15000)
-            await email_input.fill(str(PHONE))
-            await page.wait_for_timeout(1000)
+            if await email_input.is_visible(timeout=5000):
+                print("جاري إدخال البريد الإلكتروني...")
+                await email_input.fill(str(PHONE))
+                await page.wait_for_timeout(1000)
 
-            # الضغط على زر "تابع باستخدام البريد الإلكتروني"
-            try:
-                await email_input.press("Enter")
-            except Exception:
-                continue_btn = page.locator("button:has-text('تابع باستخدام البريد الإلكتروني')").first
-                await continue_btn.click(force=True)
+                try:
+                    await email_input.press("Enter")
+                except Exception:
+                    continue_btn = page.locator("button:has-text('تابع باستخدام البريد الإلكتروني')").first
+                    await continue_btn.click(force=True)
 
-            # إدخال كلمة المرور
-            password_input = page.locator("input[type='password']").first
-            await password_input.wait_for(timeout=15000)
-            await password_input.fill(str(PASSWORD))
-            await page.wait_for_timeout(1000)
+                password_input = page.locator("input[type='password']").first
+                await password_input.wait_for(timeout=15000)
+                print("جاري إدخال كلمة المرور...")
+                await password_input.fill(str(PASSWORD))
+                await page.wait_for_timeout(1000)
 
-            # الضغط على زر "تسجيل الدخول"
-            try:
-                await password_input.press("Enter")
-            except Exception:
-                login_btn = page.locator("button:has-text('تسجيل الدخول')").first
-                await login_btn.click(force=True)
+                try:
+                    await password_input.press("Enter")
+                except Exception:
+                    login_btn = page.locator("button:has-text('تسجيل الدخول')").first
+                    await login_btn.click(force=True)
 
-            await page.wait_for_timeout(3000)
-            print("تم تسجيل الدخول بنجاح!")
+                await page.wait_for_timeout(3000)
+                print("تم تسجيل الدخول بنجاح داخل التدفق!")
 
-            # --- الخطوة 2: الانتقال للفعالية واختيار الفريق ---
-            print("الانتقال لصفحة الفعالية...")
-            await page.goto(EVENT_URL, wait_until="domcontentloaded", timeout=60000)
-
-            # إغلاق الكوكيز مرة أخرى لو ظهرت في صفحة الفعالية
+            # --- الخطوة 3: اختيار بطاقة الهلال والموافقة والمتابعة ---
             await close_cookie_banner(page)
 
-            # الضغط على بطاقة الهلال برابط الصورة المباشر
             print("جاري البحث عن بطاقة نادي الهلال عبر رابط الشعار...")
             hilal_logo = page.locator(f"img[src*='{HILAL_LOGO_URL}']").first
             
@@ -122,7 +114,6 @@ async def run_monitor():
                 await hilal_fallback.click(force=True)
                 print("✅ تم الضغط على بطاقة الهلال بنجاح عبر الخيار الاحتياطي!")
 
-            # تحديد مربع "أوافق على حجز المقاعد..."
             print("تحديد الموافقة...")
             agree_checkbox = page.locator("input[type='checkbox'], [role='checkbox']").first
             await agree_checkbox.wait_for(state="visible", timeout=15000)
@@ -130,20 +121,17 @@ async def run_monitor():
                 await agree_checkbox.click(force=True)
                 print("✅ تم تحديد مربع الموافقة بنجاح.")
 
-            # الضغط على "التالي: اختيار التذاكر"
             print("الضغط على التالي...")
-            next_btn = page.locator("button:has-text('التالي: اختيار التذاكر')").first
+            next_btn = page.locator("button:has-text('التالي: اختيار التذاكر'), button:has-text('التالي')").first
             await next_btn.click(force=True)
             print("✅ تم الضغط على زر التتبع والتأكيد بنجاح.")
 
-            # الانتظار لحين تحميل خريطة المقاعد والفئات
             await page.wait_for_timeout(5000)
 
-            # --- الخطوة 3: فحص المقاعد وتحديد الأعداد المتبقية ---
+            # --- الخطوة 4: فحص المقاعد وتحديد الأعداد المتبقية ---
             report = "📊 *تقرير المقاعد المتاحة (الهلال ضد الشباب):*\n\n"
             send_alert = False
 
-            # أ) في حال اقتناص بيانات الخريطة من API
             if seats_data_store:
                 for category in TARGET_CATEGORIES:
                     available_count = len([
@@ -155,7 +143,6 @@ async def run_monitor():
                     if available_count > 0:
                         send_alert = True
 
-            # ب) في حال الاعتماد على الفحص البصري للمكونات
             else:
                 for category in TARGET_CATEGORIES:
                     cat_locator = page.locator(f"text='{category}'")
@@ -171,7 +158,7 @@ async def run_monitor():
                     else:
                         report += f"⚠️ *{category}:* غير ظاهرة بالقائمة.\n"
 
-            # --- الخطوة 4: إرسال التقرير عبر التليجرام ---
+            # --- الخطوة 5: إرسال التقرير عبر التليجرام ---
             if send_alert:
                 send_telegram(report)
                 print("تم إرسال التقرير للتليجرام بنجاح!")
