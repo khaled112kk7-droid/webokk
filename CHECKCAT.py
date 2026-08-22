@@ -148,31 +148,14 @@ async def run_monitor():
                 await page.wait_for_timeout(3000)
                 print("تم تسجيل الدخول بنجاح!")
 
-                await close_cookie_banner(page)
+                # 2. النقر على كارت فريق الهلال (الحاوية الشاملة للنص والصورة)
+                await page.locator('div', has_text='الهلال').last.click()
 
-                # 1. اختيار الهلال باستهداف الزر المباشر
-                print("جاري النقر على خيار (الهلال)...")
-                hilal_btn = page.locator("button:has(p:has-text('الهلال'))").first
-                
-                if not await hilal_btn.is_visible(timeout=5000):
-                    hilal_btn = page.locator("button[data-testid*='ui_toggle_favorite_team_651fdc90492867952e046ae2']").nth(1)
+                # 3. تفعيل مربع "أوافق" بالنقر على النص
+                await page.click('p:has-text("أوافق على")')
 
-                await hilal_btn.wait_for(state="visible", timeout=20000)
-                await hilal_btn.click(force=True)
-                await page.wait_for_timeout(1000)
-
-                # 2. النقر على مربع الموافقة
-                print("جاري النقر على مربع الموافقة...")
-                agree_box = page.locator("[data-testid='ticketing_teams_terms_checkbox']").first
-                await agree_box.wait_for(state="visible", timeout=10000)
-                await agree_box.click(force=True)
-                await page.wait_for_timeout(1000)
-
-                # 3. النقر على زر المتابعة
-                print("جاري النقر على زر (التالي: اختيار التذاكر)...")
-                confirm_btn = page.locator("[data-testid='ticketing_teams_confirm_team_button']").first
-                await confirm_btn.wait_for(state="visible", timeout=10000)
-                await confirm_btn.click(force=True)
+                # 4. الضغط على زر التالي عبر الـ testid
+                await page.click('[data-testid="ticketing_teams_confirm_team_button"]')
                 print("✅ تم الضغط بنجاح على زر اختيار التذاكر.")
 
             # انتظار اكتشاف كابتشا Cloudflare
