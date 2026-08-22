@@ -95,11 +95,24 @@ async def run_monitor():
                 await page.wait_for_timeout(3000)
                 print("تم تسجيل الدخول بنجاح داخل التدفق!")
 
-                hilal_btn = page.locator("p.text-label-M:has-text('الهلال')").first
-                await hilal_btn.wait_for(state="visible", timeout=15000)
-                await hilal_btn.click(force=True)
+                # --- الخطوة 3: اختيار الفريق والموافقة واختيار التذاكر ---
+                await close_cookie_banner(page)
+
+                print("جاري النقر على (الهلال) بواسطة JavaScript المباشر...")
+
+                # البحث عن عنصر الفقرة ذات النص "الهلال" والنقر على الزر الأب الحاوي له فوراً
+                await page.evaluate("""() => {
+                    const pElements = Array.from(document.querySelectorAll('p'));
+                    const hilalP = pElements.find(el => el.textContent.trim() === 'الهلال');
+                    if (hilalP) {
+                        const button = hilalP.closest('button');
+                        if (button) button.click();
+                        else hilalP.click();
+                    }
+                }""")
+
                 print("✅ تم النقر على (الهلال) بنجاح.")
-                await page.wait_for_timeout(1000)
+                await page.wait_for_timeout(1500)
 
             # 2. النقر على (أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط)
             print("جاري النقر على (أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط)...")
