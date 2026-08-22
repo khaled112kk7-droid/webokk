@@ -150,26 +150,37 @@ async def run_monitor():
 
                 await close_cookie_banner(page)
 
-                # اختيار الفريق والموافقة بالنقر المباشر
-                print("جاري النقر على (الهلال)...")
-                hilal_btn = page.locator("button:has-text('الهلال'), p:has-text('الهلال')").first
-                await hilal_btn.click(force=True)
+                # اختيار الفريق بالتحديد الدقيق لتفادي نص العنوان المخفي
+                print("جاري النقر على خيار (الهلال)...")
+                await page.evaluate("""() => {
+                    const elements = Array.from(document.querySelectorAll('button, div, p, span'));
+                    const target = elements.find(el => el.textContent.trim() === 'الهلال' && el.children.length === 0);
+                    if (target) {
+                        const parentBtn = target.closest('button') || target;
+                        parentBtn.click();
+                    }
+                }""")
                 await page.wait_for_timeout(1500)
 
                 print("جاري النقر على مربع الموافقة...")
-                agree_box = page.locator("text=أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط").first
-                await agree_box.click(force=True)
+                await page.evaluate("""() => {
+                    const labels = Array.from(document.querySelectorAll('label, span, div, p'));
+                    const agreeEl = labels.find(el => el.textContent.includes('أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط'));
+                    if (agreeEl) agreeEl.click();
+                }""")
                 await page.wait_for_timeout(1500)
 
-                # نقر حقيقي لتفعيل حادثة زر التالي
-                print("جاري النقر المباشر على زر (التالي: اختيار التذاكر)...")
-                next_btn = page.locator("button:has-text('التالي: اختيار التذاكر'), button:has-text('اختيار التذاكر')").first
-                await next_btn.click(force=True)
-                print("✅ تم الضغط الحقيقي على زر اختيار التذاكر.")
+                print("جاري النقر على زر (التالي: اختيار التذاكر)...")
+                await page.evaluate("""() => {
+                    const buttons = Array.from(document.querySelectorAll('button'));
+                    const nextBtn = buttons.find(btn => btn.textContent.includes('التالي: اختيار التذاكر') || btn.textContent.includes('اختيار التذاكر'));
+                    if (nextBtn) nextBtn.click();
+                }""")
+                print("✅ تم الضغط على زر اختيار التذاكر.")
 
-            # انتظار ظهور إطار الكابتشا حتى 12 ثانية
+            # انتظار ظهور إطار الكابتشا
             print("⏳ جاري انتظار واكتشاف كابتشا Cloudflare...")
-            for _ in range(12):
+            for _ in range(10):
                 await page.wait_for_timeout(1000)
                 if not detected_sitekey:
                     detected_sitekey = await page.evaluate("""() => {
@@ -194,7 +205,7 @@ async def run_monitor():
                 if solved:
                     print("✅ تم تحقين التوكن بنجاح! جاري الانتظار للانتقال إلى الخريطة...")
             else:
-                print("⚠️ لم يظهر إطار الكابتشا المباشر، جاري فحص استجابة الشبكة والتحويل...")
+                print("ℹ️ لم تُظهر الصفحة إطار كابتشا مباشر، جاري متابعة فتح الخريطة...")
 
             print("⏳ جاري انتظار فتح خريطة المقاعد واقتناص الـ API...")
             await page.wait_for_timeout(10000)
