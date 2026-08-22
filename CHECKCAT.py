@@ -95,14 +95,11 @@ async def run_monitor():
                 await page.wait_for_timeout(3000)
                 print("تم تسجيل الدخول بنجاح داخل التدفق!")
 
-            # --- الخطوة 3: اختيار الفريق والموافقة واختيار التذاكر ---
-            
-            # النقر على صورة الهلال مباشرةمن الصورة
-            hilal_img = page.locator("img[alt='الهلال']").first
-            await hilal_img.wait_for(state="visible", timeout=15000)
-            await hilal_img.click(force=True)
-            print("✅ تم النقر على (الهلال) بنجاح.")
-            await page.wait_for_timeout(1000)
+                hilal_btn = page.locator("p.text-label-M:has-text('الهلال')").first
+                await hilal_btn.wait_for(state="visible", timeout=15000)
+                await hilal_btn.click(force=True)
+                print("✅ تم النقر على (الهلال) بنجاح.")
+                await page.wait_for_timeout(1000)
 
             # 2. النقر على (أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط)
             print("جاري النقر على (أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط)...")
