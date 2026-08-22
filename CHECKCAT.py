@@ -150,21 +150,21 @@ async def run_monitor():
 
                 await close_cookie_banner(page)
 
-                # 1. اختيار فريق الهلال باستخدام name="favorite_team" (الزر الثاني)
-                print("جاري النقر على خيار (الهلال)...")
-                hilal_btn = page.locator("button[name='favorite_team']").nth(1)
-                await hilal_btn.wait_for(state="visible", timeout=10000)
-                await hilal_btn.click(force=True)
+                # 1. اختيار الهلال باستهداف صورة شعار الهلال مباشرة
+                print("جاري النقر على خيار (الهلال) عبر شعار الفريق...")
+                hilal_img = page.locator("img[src*='al-hilal'], img[alt='الهلال']").first
+                await hilal_img.wait_for(state="visible", timeout=15000)
+                await hilal_img.click(force=True)
                 await page.wait_for_timeout(1000)
 
-                # 2. النقر على مربع الموافقة باستخدام data-testid الأصلي
+                # 2. النقر على مربع الموافقة
                 print("جاري النقر على مربع الموافقة...")
                 agree_box = page.locator("[data-testid='ticketing_teams_terms_checkbox']").first
                 await agree_box.wait_for(state="visible", timeout=10000)
                 await agree_box.click(force=True)
                 await page.wait_for_timeout(1000)
 
-                # 3. النقر على زر المتابعة باستعمال data-testid المستخرج من الصورة
+                # 3. النقر على زر المتابعة
                 print("جاري النقر على زر (التالي: اختيار التذاكر)...")
                 confirm_btn = page.locator("[data-testid='ticketing_teams_confirm_team_button']").first
                 await confirm_btn.wait_for(state="visible", timeout=10000)
