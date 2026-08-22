@@ -97,11 +97,10 @@ async def run_monitor():
 
             # --- الخطوة 3: اختيار الفريق والموافقة واختيار التذاكر ---
             
-            # 1. النقر على فريق الهلال باستخدام data-testid من الصورة
-            print("جاري النقر على (الهلال)...")
-            hilal_btn = page.locator("button[data-testid='ui_toggle_favorite_team_651fdc90492867952e046ae2']").first
-            await hilal_btn.wait_for(state="visible", timeout=15000)
-            await hilal_btn.click(force=True)
+            # النقر على صورة الهلال مباشرةمن الصورة
+            hilal_img = page.locator("img[alt='الهلال']").first
+            await hilal_img.wait_for(state="visible", timeout=15000)
+            await hilal_img.click(force=True)
             print("✅ تم النقر على (الهلال) بنجاح.")
             await page.wait_for_timeout(1000)
 
