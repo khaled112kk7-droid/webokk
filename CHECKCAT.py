@@ -14,9 +14,6 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 EVENT_URL = "https://webook.com/ar/SA/RUH/sports-event/events/rsl-26-27-al-shabab-vs-al-hilal-227984/book"
 TARGET_CATEGORIES = ["Premium", "Premium 2"]
 
-# رابط شعار بطاقة الهلال المستهدف للنقر
-HILAL_LOGO_URL = "https://wbk-assets-backup.s3.eu-west-1.amazonaws.com/public/uploads/leauges/teams/al-hilal-1709237403.png"
-
 # متغير تخزين المقاعد المستخرجة من الـ API
 seats_data_store = []
 
@@ -98,33 +95,31 @@ async def run_monitor():
                 await page.wait_for_timeout(3000)
                 print("تم تسجيل الدخول بنجاح داخل التدفق!")
 
-            # --- الخطوة 3: اختيار بطاقة الهلال والموافقة والمتابعة ---
+            # --- الخطوة 3: اختيار الفريق والموافقة واختيار التذاكر ---
             await close_cookie_banner(page)
 
-            print("جاري البحث عن بطاقة نادي الهلال عبر رابط الشعار...")
-            hilal_logo = page.locator(f"img[src*='{HILAL_LOGO_URL}']").first
-            
-            if await hilal_logo.is_visible(timeout=15000):
-                await hilal_logo.click(force=True)
-                print("✅ تم الضغط على بطاقة الهلال بنجاح بواسطة رابط الشعار!")
-            else:
-                print("⚠️ لم يتم العثور على الشعار مباشرة، جاري استخدام الخيار الاحتياطي...")
-                hilal_fallback = page.locator("button:has(p:has-text('الهلال')), button:has(img[alt*='الهلال'])").first
-                await hilal_fallback.wait_for(state="visible", timeout=15000)
-                await hilal_fallback.click(force=True)
-                print("✅ تم الضغط على بطاقة الهلال بنجاح عبر الخيار الاحتياطي!")
+            # 1. النقر على (الهلال)
+            print("جاري النقر على (الهلال)...")
+            hilal_btn = page.locator("text='الهلال'").first
+            await hilal_btn.wait_for(state="visible", timeout=15000)
+            await hilal_btn.click(force=True)
+            print("✅ تم النقر على (الهلال) بنجاح.")
+            await page.wait_for_timeout(1000)
 
-            print("تحديد الموافقة...")
-            agree_checkbox = page.locator("input[type='checkbox'], [role='checkbox']").first
-            await agree_checkbox.wait_for(state="visible", timeout=15000)
-            if not await agree_checkbox.is_checked():
-                await agree_checkbox.click(force=True)
-                print("✅ تم تحديد مربع الموافقة بنجاح.")
+            # 2. النقر على (أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط)
+            print("جاري النقر على (أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط)...")
+            agree_btn = page.locator("text='أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط'").first
+            await agree_btn.wait_for(state="visible", timeout=15000)
+            await agree_btn.click(force=True)
+            print("✅ تم النقر على (أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط) بنجاح.")
+            await page.wait_for_timeout(1000)
 
-            print("الضغط على التالي...")
-            next_btn = page.locator("button:has-text('التالي: اختيار التذاكر'), button:has-text('التالي')").first
+            # 3. النقر على (التالي: اختيار التذاكر)
+            print("جاري النقر على (التالي: اختيار التذاكر)...")
+            next_btn = page.locator("button:has-text('التالي: اختيار التذاكر'), text='التالي: اختيار التذاكر'").first
+            await next_btn.wait_for(state="visible", timeout=15000)
             await next_btn.click(force=True)
-            print("✅ تم الضغط على زر التتبع والتأكيد بنجاح.")
+            print("✅ تم النقر على (التالي: اختيار التذاكر) بنجاح.")
 
             await page.wait_for_timeout(5000)
 
