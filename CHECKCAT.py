@@ -65,10 +65,11 @@ async def run_monitor():
         page.on("response", handle_response)
 
         try:
-            # --- الخطوة 1: تسجيل الدخول (الكود الأصلي المستقر) ---
+            # --- الخطوة 1: تسجيل الدخول (الكود الأصلي بالكامل) ---
             print("جاري فتح صفحة تسجيل الدخول...")
-            await page.goto("https://webook.com/ar/login", wait_until="domcontentloaded", timeout=60000)
+            await page.goto("https://webook.com/ar/login", wait_until="networkidle")
 
+            # إغلاق نافذة الكوكيز إذا ظهرت
             await close_cookie_banner(page)
 
             # إدخال البريد الإلكتروني
@@ -77,6 +78,7 @@ async def run_monitor():
             await email_input.fill(str(PHONE))
             await page.wait_for_timeout(1000)
 
+            # الضغط على زر "تابع باستخدام البريد الإلكتروني"
             try:
                 await email_input.press("Enter")
             except Exception:
@@ -89,6 +91,7 @@ async def run_monitor():
             await password_input.fill(str(PASSWORD))
             await page.wait_for_timeout(1000)
 
+            # الضغط على زر "تسجيل الدخول"
             try:
                 await password_input.press("Enter")
             except Exception:
@@ -98,30 +101,26 @@ async def run_monitor():
             await page.wait_for_timeout(3000)
             print("تم تسجيل الدخول بنجاح!")
 
-            # --- الخطوة 2: الانتقال للفعالية واختيار بطاقة الهلال ---
+            # --- الخطوة 2: الانتقال للفعالية واختيار الفريق ---
             print("الانتقال لصفحة الفعالية...")
             await page.goto(EVENT_URL, wait_until="domcontentloaded", timeout=60000)
 
+            # إغلاق الكوكيز مرة أخرى لو ظهرت في صفحة الفعالية
             await close_cookie_banner(page)
 
-            # البحث عن بطاقة الهلال عبر صورة الشعار المحددة
+            # الضغط على بطاقة الهلال برابط الصورة المباشر
             print("جاري البحث عن بطاقة نادي الهلال عبر رابط الشعار...")
-            
-            # محاولة تحديد العنصر الذي يحوي صورة بطاقة الهلال
             hilal_logo = page.locator(f"img[src*='{HILAL_LOGO_URL}']").first
             
             if await hilal_logo.is_visible(timeout=15000):
                 await hilal_logo.click(force=True)
                 print("✅ تم الضغط على بطاقة الهلال بنجاح بواسطة رابط الشعار!")
             else:
-                # محاولة احتياطية للنقر على الحاوية الأب أو العنصر الحاوي للشعار
-                print("⚠️ تعذر تحديد الشعار مباشرة، جاري النقر على بطاقة الهلال عبر النص المباشر...")
-                hilal_fallback = page.locator("text='الهلال'").first
+                print("⚠️ لم يتم العثور على الشعار مباشرة، جاري استخدام الخيار الاحتياطي...")
+                hilal_fallback = page.locator("button:has(p:has-text('الهلال')), button:has(img[alt*='الهلال'])").first
                 await hilal_fallback.wait_for(state="visible", timeout=15000)
                 await hilal_fallback.click(force=True)
                 print("✅ تم الضغط على بطاقة الهلال بنجاح عبر الخيار الاحتياطي!")
-
-            await page.wait_for_timeout(1000)
 
             # تحديد مربع "أوافق على حجز المقاعد..."
             print("تحديد الموافقة...")
@@ -132,10 +131,10 @@ async def run_monitor():
                 print("✅ تم تحديد مربع الموافقة بنجاح.")
 
             # الضغط على "التالي: اختيار التذاكر"
-            print("الضغط على زر المتابعة...")
-            next_btn = page.locator("button:has-text('التالي: اختيار التذاكر'), button:has-text('التالي')").first
+            print("الضغط على التالي...")
+            next_btn = page.locator("button:has-text('التالي: اختيار التذاكر')").first
             await next_btn.click(force=True)
-            print("✅ تم الانتقال إلى مرحلة اختيار التذاكر.")
+            print("✅ تم الضغط على زر التتبع والتأكيد بنجاح.")
 
             # الانتظار لحين تحميل خريطة المقاعد والفئات
             await page.wait_for_timeout(5000)
@@ -144,6 +143,7 @@ async def run_monitor():
             report = "📊 *تقرير المقاعد المتاحة (الهلال ضد الشباب):*\n\n"
             send_alert = False
 
+            # أ) في حال اقتناص بيانات الخريطة من API
             if seats_data_store:
                 for category in TARGET_CATEGORIES:
                     available_count = len([
@@ -155,6 +155,7 @@ async def run_monitor():
                     if available_count > 0:
                         send_alert = True
 
+            # ب) في حال الاعتماد على الفحص البصري للمكونات
             else:
                 for category in TARGET_CATEGORIES:
                     cat_locator = page.locator(f"text='{category}'")
