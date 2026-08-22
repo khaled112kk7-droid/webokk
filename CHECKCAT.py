@@ -4,17 +4,24 @@ import json
 import requests
 from playwright.async_api import async_playwright
 
+# 1. جلب البيانات السرية من متغيرات البيئة (GitHub Secrets)
 PHONE = os.getenv("WEBOOK_EMIL")
 PASSWORD = os.getenv("WEBOOK_PASS")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
+# 2. إعدادات الفعالية والفئات المطلوب مراقبتها
 EVENT_URL = "https://webook.com/ar/SA/RUH/sports-event/events/rsl-26-27-al-shabab-vs-al-hilal-227984/book"
 TARGET_CATEGORIES = ["Premium", "Premium 2"]
 
+# رابط شعار بطاقة الهلال المستهدف للنقر
+HILAL_LOGO_URL = "https://wbk-assets-backup.s3.eu-west-1.amazonaws.com/public/uploads/leauges/teams/al-hilal-1709237403.png"
+
+# متغير تخزين المقاعد المستخرجة من الـ API
 seats_data_store = []
 
 def send_telegram(message):
+    """إرسال التنبيه فوراً إلى التليجرام"""
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"}
     try:
@@ -23,6 +30,7 @@ def send_telegram(message):
         print(f"فشل إرسال التنبيه عبر التليجرام: {e}")
 
 async def handle_response(response):
+    """التقاط الـ API الخاص بخريطة المقاعد أثناء التحميل واستخراج بيانات المقاعد"""
     global seats_data_store
     if "seat" in response.url or "map" in response.url or "layout" in response.url:
         try:
@@ -36,10 +44,13 @@ async def handle_response(response):
             pass
 
 async def close_cookie_banner(page):
+    """إغلاق نافذة موافقة الكوكيز تلقائياً إذا ظهرت"""
     try:
-        cookie_btn = page.locator("button:has-text('قبول الكل'), button:has-text('رفض الكل')").first
-        if await cookie_btn.is_visible(timeout=2000):
+        cookie_btn = page.locator("button:has-text('قبول الكل'), button:has-text('رفض الكل الغير ضروري')").first
+        if await cookie_btn.is_visible(timeout=3000):
             await cookie_btn.click(force=True)
+            print("تم إغلاق نافذة الكوكيز بنجاح.")
+            await page.wait_for_timeout(1000)
     except Exception:
         pass
 
@@ -50,55 +61,86 @@ async def run_monitor():
         context = await browser.new_context()
         page = await context.new_page()
 
+        # الاستماع للطلبات الشبكية لاقتناص استجابة الخريطة
         page.on("response", handle_response)
 
         try:
-            # --- تسجيل الدخول والانتظار التلقائي للتوجيه ---
+            # --- الخطوة 1: تسجيل الدخول (الكود الأصلي المستقر) ---
             print("جاري فتح صفحة تسجيل الدخول...")
             await page.goto("https://webook.com/ar/login", wait_until="domcontentloaded", timeout=60000)
+
             await close_cookie_banner(page)
 
+            # إدخال البريد الإلكتروني
             email_input = page.locator("input[type='email'], input[placeholder*='you@email.com']").first
             await email_input.wait_for(timeout=15000)
             await email_input.fill(str(PHONE))
+            await page.wait_for_timeout(1000)
 
             try:
                 await email_input.press("Enter")
             except Exception:
-                await page.locator("button:has-text('تابع باستخدام البريد الإلكتروني')").first.click(force=True)
+                continue_btn = page.locator("button:has-text('تابع باستخدام البريد الإلكتروني')").first
+                await continue_btn.click(force=True)
 
+            # إدخال كلمة المرور
             password_input = page.locator("input[type='password']").first
             await password_input.wait_for(timeout=15000)
             await password_input.fill(str(PASSWORD))
+            await page.wait_for_timeout(1000)
 
-            print("جاري تسجيل الدخول والانتظار حتى الانتقال التلقائي...")
             try:
                 await password_input.press("Enter")
             except Exception:
-                await page.locator("button:has-text('تسجيل الدخول')").first.click(force=True)
+                login_btn = page.locator("button:has-text('تسجيل الدخول')").first
+                await login_btn.click(force=True)
 
-            # الانتظار التلقائي لحين تغيير رابط الصفحة بعد تسجيل الدخول
-            await page.wait_for_url(lambda url: "login" not in url, timeout=30000)
-            await page.wait_for_load_state("domcontentloaded")
-            print("تم تسجيل الدخول والتوجيه بنجاح!")
+            await page.wait_for_timeout(3000)
+            print("تم تسجيل الدخول بنجاح!")
 
-            # --- خطوة واحدة: فتح الفعالية واختيار الفريق والمتابعة ---
-            print("الانتقال لصفحة الفعالية واختيار الفريق...")
+            # --- الخطوة 2: الانتقال للفعالية واختيار بطاقة الهلال ---
+            print("الانتقال لصفحة الفعالية...")
             await page.goto(EVENT_URL, wait_until="domcontentloaded", timeout=60000)
+
             await close_cookie_banner(page)
 
-            await page.get_by_text("الهلال", exact=False).first.click(force=True)
+            # البحث عن بطاقة الهلال عبر صورة الشعار المحددة
+            print("جاري البحث عن بطاقة نادي الهلال عبر رابط الشعار...")
             
+            # محاولة تحديد العنصر الذي يحوي صورة بطاقة الهلال
+            hilal_logo = page.locator(f"img[src*='{HILAL_LOGO_URL}']").first
+            
+            if await hilal_logo.is_visible(timeout=15000):
+                await hilal_logo.click(force=True)
+                print("✅ تم الضغط على بطاقة الهلال بنجاح بواسطة رابط الشعار!")
+            else:
+                # محاولة احتياطية للنقر على الحاوية الأب أو العنصر الحاوي للشعار
+                print("⚠️ تعذر تحديد الشعار مباشرة، جاري النقر على بطاقة الهلال عبر النص المباشر...")
+                hilal_fallback = page.locator("text='الهلال'").first
+                await hilal_fallback.wait_for(state="visible", timeout=15000)
+                await hilal_fallback.click(force=True)
+                print("✅ تم الضغط على بطاقة الهلال بنجاح عبر الخيار الاحتياطي!")
+
+            await page.wait_for_timeout(1000)
+
+            # تحديد مربع "أوافق على حجز المقاعد..."
+            print("تحديد الموافقة...")
             agree_checkbox = page.locator("input[type='checkbox'], [role='checkbox']").first
-            if await agree_checkbox.is_visible(timeout=3000):
-                if not await agree_checkbox.is_checked():
-                    await agree_checkbox.click(force=True)
+            await agree_checkbox.wait_for(state="visible", timeout=15000)
+            if not await agree_checkbox.is_checked():
+                await agree_checkbox.click(force=True)
+                print("✅ تم تحديد مربع الموافقة بنجاح.")
 
-            await page.locator("button:has-text('التالي'), button:has-text('اختيار التذاكر')").first.click(force=True)
+            # الضغط على "التالي: اختيار التذاكر"
+            print("الضغط على زر المتابعة...")
+            next_btn = page.locator("button:has-text('التالي: اختيار التذاكر'), button:has-text('التالي')").first
+            await next_btn.click(force=True)
+            print("✅ تم الانتقال إلى مرحلة اختيار التذاكر.")
 
-            await page.wait_for_timeout(4000)
+            # الانتظار لحين تحميل خريطة المقاعد والفئات
+            await page.wait_for_timeout(5000)
 
-            # --- فحص المقاعد ---
+            # --- الخطوة 3: فحص المقاعد وتحديد الأعداد المتبقية ---
             report = "📊 *تقرير المقاعد المتاحة (الهلال ضد الشباب):*\n\n"
             send_alert = False
 
@@ -108,15 +150,18 @@ async def run_monitor():
                         s for s in seats_data_store 
                         if s.get("status") == "AVAILABLE" and category.lower() in str(s.get("category", "")).lower()
                     ])
+                    
                     report += f"🔹 *{category}:* متبقي `{available_count}` مقعد.\n"
                     if available_count > 0:
                         send_alert = True
+
             else:
                 for category in TARGET_CATEGORIES:
                     cat_locator = page.locator(f"text='{category}'")
                     if await cat_locator.is_visible():
-                        parent_card = cat_locator.locator("xpath=ancestor::div[1]")
+                        parent_card = cat_locator.locator("xpath=ancestor::div[contains(@class, 'card') or contains(@class, 'item')][1]")
                         text = await parent_card.inner_text()
+                        
                         if "نفدت" in text or "Sold Out" in text:
                             report += f"❌ *{category}:* نفدت بالكامل.\n"
                         else:
@@ -125,6 +170,7 @@ async def run_monitor():
                     else:
                         report += f"⚠️ *{category}:* غير ظاهرة بالقائمة.\n"
 
+            # --- الخطوة 4: إرسال التقرير عبر التليجرام ---
             if send_alert:
                 send_telegram(report)
                 print("تم إرسال التقرير للتليجرام بنجاح!")
