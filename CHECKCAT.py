@@ -29,8 +29,18 @@ async def solve_turnstile_captcha(page, sitekey):
         print("⚠️ لم يتم ضبط CAPTCHA_API_KEY في GitHub Secrets.")
         return False
 
-    print(f"🧩 جاري إرسال الكابتشا لخدمة 2Captcha (Sitekey: {sitekey})...")
-    req_url = f"http://2captcha.com/in.php?key={CAPTCHA_API_KEY}&method=turnstile&sitekey={sitekey}&pageurl={page.url}&json=1"
+    # تحديد نوع الخدمة بناءً على نوع الكابتشا لتفادي ERROR_SITEKEY
+    method = "turnstile"
+    if sitekey.startswith("6L"):
+        method = "userrecaptcha"
+
+    print(f"🧩 جاري إرسال الكابتشا لخدمة 2Captcha (Method: {method}, Sitekey: {sitekey})...")
+    
+    if method == "turnstile":
+        req_url = f"http://2captcha.com/in.php?key={CAPTCHA_API_KEY}&method=turnstile&sitekey={sitekey}&pageurl={page.url}&json=1"
+    else:
+        req_url = f"http://2captcha.com/in.php?key={CAPTCHA_API_KEY}&method=userrecaptcha&googlekey={sitekey}&pageurl={page.url}&json=1"
+
     res = requests.get(req_url).json()
 
     if res.get("status") != 1:
@@ -45,7 +55,7 @@ async def solve_turnstile_captcha(page, sitekey):
         sol_res = requests.get(fetch_url).json()
         if sol_res.get("status") == 1:
             token = sol_res.get("request")
-            print("✅ تم استلام توكن الكابتشا! جاري تحقينه بالصفحة...")
+            print("✅ تم استلام توكن الكابتشا بنجاح! جاري تحقينه...")
             
             await page.evaluate(f"""(token) => {{
                 const inputs = document.querySelectorAll('input[name*="turnstile"], input[name*="g-recaptcha"], [name="cf-turnstile-response"]');
@@ -64,12 +74,12 @@ async def handle_response(response):
     global seats_data_store, detected_sitekey
     url = response.url.lower()
 
-    # التقاط الـ Sitekey تلقائياً من طلبات الكابتشا في الشبكة
-    if "turnstile" in url or "challenges" in url or "captcha" in url:
+    # التقاط الـ Sitekey تلقائياً من الشبكة إن وجد
+    if "challenges.cloudflare.com" in url:
         if "k=" in url:
             try:
                 key = url.split("k=")[1].split("&")[0]
-                if key and len(key) > 10:
+                if key and not key.startswith("6L"):
                     detected_sitekey = key
             except Exception:
                 pass
@@ -111,7 +121,7 @@ async def run_monitor():
             await page.goto(EVENT_URL, wait_until="networkidle")
             await close_cookie_banner(page)
 
-            # 1. تسجيل الدخول
+            # تسجيل الدخول
             email_input = page.locator("input[type='email'], input[placeholder*='you@email.com']").first
             if await email_input.is_visible(timeout=5000):
                 print("جاري إدخال البريد الإلكتروني...")
@@ -141,7 +151,7 @@ async def run_monitor():
 
                 await close_cookie_banner(page)
 
-                # 2. اختيار الفريق والموافقة
+                # اختيار الفريق والموافقة
                 print("جاري النقر على (الهلال)...")
                 await page.evaluate("""() => {
                     const pElements = Array.from(document.querySelectorAll('p'));
@@ -162,7 +172,6 @@ async def run_monitor():
                 }""")
                 await page.wait_for_timeout(1500)
 
-                # 3. الضغط على زر (التالي: اختيار التذاكر)
                 print("جاري النقر على زر (التالي: اختيار التذاكر)...")
                 await page.evaluate("""() => {
                     const buttons = Array.from(document.querySelectorAll('button'));
@@ -171,18 +180,21 @@ async def run_monitor():
                 }""")
                 print("✅ تم الضغط على (التالي: اختيار التذاكر).")
 
-            # 4. كشف الكابتشا والتعامل معها
             await page.wait_for_timeout(4000)
 
-            # محاولة قراءة sitekey المباشر إن وجد من الـ iframe أو من مسار الشبكة
+            # استخراج Sitekey الخاص بـ Turnstile بدقة
             if not detected_sitekey:
                 detected_sitekey = await page.evaluate("""() => {
-                    const el = document.querySelector('[data-sitekey]');
-                    if (el) return el.getAttribute('data-sitekey');
-                    const iframe = document.querySelector('iframe[src*="sitekey"]');
-                    if (iframe) {
-                        const match = iframe.src.match(/sitekey=([^&]+)/);
-                        return match ? match[1] : null;
+                    const cfEl = document.querySelector('.cf-turnstile, [data-sitekey]');
+                    if (cfEl && cfEl.getAttribute('data-sitekey')) {
+                        return cfEl.getAttribute('data-sitekey');
+                    }
+                    const iframes = Array.from(document.querySelectorAll('iframe'));
+                    for (let iframe of iframes) {
+                        if (iframe.src.includes('challenges.cloudflare.com')) {
+                            const match = iframe.src.match(/k=([^&]+)/) || iframe.src.match(/sitekey=([^&]+)/);
+                            if (match) return match[1];
+                        }
                     }
                     return null;
                 }""")
@@ -192,14 +204,13 @@ async def run_monitor():
                 solved = await solve_turnstile_captcha(page, detected_sitekey)
                 
                 if solved:
-                    print("✅ تم تحقين حل الكابتشا، جاري ضغط (التالي) لمتابعة فتح الخريطة...")
+                    print("✅ تم تحقين حل الكابتشا، جاري إعادة ضغط (التالي) لمتابعة فتح الخريطة...")
                     await page.evaluate("""() => {
                         const buttons = Array.from(document.querySelectorAll('button'));
                         const nextBtn = buttons.find(btn => btn.textContent.includes('التالي: اختيار التذاكر') || btn.textContent.includes('اختيار التذاكر'));
                         if (nextBtn) nextBtn.click();
                     }""")
 
-            # 5. انتظار فتح الخريطة
             print("⏳ جاري انتظار فتح خريطة المقاعد واقتناص الـ API...")
             await page.wait_for_timeout(10000)
 
@@ -226,7 +237,7 @@ async def run_monitor():
                         report += f"✅ *{category}:* متاحة الآن للحجز!\n"
                         send_alert = True
                     else:
-                        report += f"❌ *{category}:* نفدت أو غير متوفرة.\n"
+                        report += f"❌ *{category}:* غير متاحة أو نفدت.\n"
 
             if send_alert:
                 send_telegram(report)
