@@ -150,24 +150,28 @@ async def run_monitor():
 
                 await close_cookie_banner(page)
 
-                # النقر المباشر على زر الفريق عبر favorite_team
+                # 1. اختيار فريق الهلال باستخدام name="favorite_team" (الزر الثاني)
                 print("جاري النقر على خيار (الهلال)...")
                 hilal_btn = page.locator("button[name='favorite_team']").nth(1)
                 await hilal_btn.wait_for(state="visible", timeout=10000)
                 await hilal_btn.click(force=True)
-                await page.wait_for_timeout(1500)
+                await page.wait_for_timeout(1000)
 
+                # 2. النقر على مربع الموافقة باستخدام data-testid الأصلي
                 print("جاري النقر على مربع الموافقة...")
-                agree_box = page.locator("text=أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط").first
+                agree_box = page.locator("[data-testid='ticketing_teams_terms_checkbox']").first
+                await agree_box.wait_for(state="visible", timeout=10000)
                 await agree_box.click(force=True)
-                await page.wait_for_timeout(1500)
+                await page.wait_for_timeout(1000)
 
+                # 3. النقر على زر المتابعة باستعمال data-testid المستخرج من الصورة
                 print("جاري النقر على زر (التالي: اختيار التذاكر)...")
-                next_btn = page.locator("button:has-text('التالي: اختيار التذاكر'), button:has-text('اختيار التذاكر')").first
-                await next_btn.click(force=True)
-                print("✅ تم الضغط على زر اختيار التذاكر.")
+                confirm_btn = page.locator("[data-testid='ticketing_teams_confirm_team_button']").first
+                await confirm_btn.wait_for(state="visible", timeout=10000)
+                await confirm_btn.click(force=True)
+                print("✅ تم الضغط بنجاح على زر اختيار التذاكر.")
 
-            # انتظار ظهور إطار الكابتشا
+            # انتظار اكتشاف كابتشا Cloudflare
             print("⏳ جاري انتظار واكتشاف كابتشا Cloudflare...")
             for _ in range(10):
                 await page.wait_for_timeout(1000)
