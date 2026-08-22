@@ -96,28 +96,24 @@ async def run_monitor():
                 print("تم تسجيل الدخول بنجاح داخل التدفق!")
 
             # --- الخطوة 3: اختيار الفريق والموافقة واختيار التذاكر ---
-            await close_cookie_banner(page)
-
+            
             # 1. النقر على (الهلال)
             print("جاري النقر على (الهلال)...")
-            hilal_btn = page.locator("text='الهلال'").first
-            await hilal_btn.wait_for(state="visible", timeout=15000)
+            hilal_btn = page.locator("button:has-text('الهلال')").first
             await hilal_btn.click(force=True)
             print("✅ تم النقر على (الهلال) بنجاح.")
             await page.wait_for_timeout(1000)
 
             # 2. النقر على (أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط)
             print("جاري النقر على (أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط)...")
-            agree_btn = page.locator("text='أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط'").first
-            await agree_btn.wait_for(state="visible", timeout=15000)
+            agree_btn = page.locator("button:has-text('أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط')").first
             await agree_btn.click(force=True)
             print("✅ تم النقر على (أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط) بنجاح.")
             await page.wait_for_timeout(1000)
 
             # 3. النقر على (التالي: اختيار التذاكر)
             print("جاري النقر على (التالي: اختيار التذاكر)...")
-            next_btn = page.locator("button:has-text('التالي: اختيار التذاكر'), text='التالي: اختيار التذاكر'").first
-            await next_btn.wait_for(state="visible", timeout=15000)
+            next_btn = page.locator("button:has-text('التالي: اختيار التذاكر')").first
             await next_btn.click(force=True)
             print("✅ تم النقر على (التالي: اختيار التذاكر) بنجاح.")
 
