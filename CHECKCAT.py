@@ -97,16 +97,17 @@ async def run_monitor():
 
             # --- الخطوة 3: اختيار الفريق والموافقة واختيار التذاكر ---
             
-            # 1. النقر على (الهلال)
+            # 1. النقر على فريق الهلال باستخدام data-testid من الصورة
             print("جاري النقر على (الهلال)...")
-            hilal_btn = page.locator("button:has-text('الهلال')").first
+            hilal_btn = page.locator("button[data-testid='ui_toggle_favorite_team_651fdc90492867952e046ae2']").first
+            await hilal_btn.wait_for(state="visible", timeout=15000)
             await hilal_btn.click(force=True)
             print("✅ تم النقر على (الهلال) بنجاح.")
             await page.wait_for_timeout(1000)
 
             # 2. النقر على (أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط)
             print("جاري النقر على (أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط)...")
-            agree_btn = page.locator("button:has-text('أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط')").first
+            agree_btn = page.locator("text='أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط', button:has-text('أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط')").first
             await agree_btn.click(force=True)
             print("✅ تم النقر على (أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط) بنجاح.")
             await page.wait_for_timeout(1000)
