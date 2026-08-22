@@ -113,19 +113,26 @@ async def run_monitor():
 
                 print("✅ تم النقر على (الهلال) بنجاح.")
                 await page.wait_for_timeout(1500)
-
-            # 2. النقر على (أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط)
-            print("جاري النقر على (أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط)...")
-            agree_btn = page.locator("text='أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط', button:has-text('أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط')").first
-            await agree_btn.click(force=True)
-            print("✅ تم النقر على (أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط) بنجاح.")
-            await page.wait_for_timeout(1000)
-
-            # 3. النقر على (التالي: اختيار التذاكر)
-            print("جاري النقر على (التالي: اختيار التذاكر)...")
-            next_btn = page.locator("button:has-text('التالي: اختيار التذاكر')").first
-            await next_btn.click(force=True)
-            print("✅ تم النقر على (التالي: اختيار التذاكر) بنجاح.")
+            
+                # 2. النقر على مربع الموافقة
+                print("جاري النقر على مربع الموافقة...")
+                await page.evaluate("""() => {
+                    const labels = Array.from(document.querySelectorAll('label, span, div, p'));
+                    const agreeEl = labels.find(el => el.textContent.includes('أوافق على حجز المقاعد المخصصة لجماهير فريقي المفضل فقط'));
+                    if (agreeEl) agreeEl.click();
+                }""")
+                print("✅ تم النقر على مربع الموافقة بنجاح.")
+                await page.wait_for_timeout(1500)
+            
+            
+                # 3. النقر على زر "التالي: اختيار التذاكر"
+                print("جاري النقر على زر (التالي: اختيار التذاكر)...")
+                await page.evaluate("""() => {
+                    const buttons = Array.from(document.querySelectorAll('button'));
+                    const nextBtn = buttons.find(btn => btn.textContent.includes('التالي: اختيار التذاكر') || btn.textContent.includes('اختيار التذاكر'));
+                    if (nextBtn) nextBtn.click();
+                }""")
+                print("✅ تم الانتقال بنجاح.")
 
             await page.wait_for_timeout(5000)
 
