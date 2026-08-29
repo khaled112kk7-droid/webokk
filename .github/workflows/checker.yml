@@ -1,0 +1,38 @@
+name: Webook Section 121 Checker
+
+on:
+  schedule:
+    # تشغيل تلقائي كل 30 دقيقة
+    - cron: '0,30 * * * *'
+  workflow_dispatch: # يتيح لك التشغيل اليدوي بنقرة زر للتجربة
+
+jobs:
+  run-checker:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install playwright requests
+          playwright install chromium
+          playwright install-deps
+
+      - name: Run Webook Script
+        env:
+          WEBOOK_EMAIL: ${{ secrets.WEBOOK_EMAIL }}
+          WEBOOK_PASSWORD: ${{ secrets.WEBOOK_PASSWORD }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PROXY_SERVER: ${{ secrets.PROXY_SERVER }}
+          PROXY_USER: ${{ secrets.PROXY_USER }}
+          PROXY_PASS: ${{ secrets.PROXY_PASS }}
+        run: python webookiti.py
