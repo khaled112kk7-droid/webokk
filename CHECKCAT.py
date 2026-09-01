@@ -11,7 +11,7 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 CAPTCHA_API_KEY = os.getenv("CAPTCHA_API_KEY")
 
-EVENT_URL = "https://webook.com/ar/sa/jed/sports-event/events/rsl-al-ittihad-vs-al-nassr-050926/book"
+EVENT_URL = "https://webook.com/ar/SA/RUH/sports-event/events/rsl-26-27-al-shabab-vs-al-hilal-227984/book"
 TARGET_CATEGORIES = ["Premium", "Premium 2"]
 
 # اسم الفريق المطلوب تحديده ("الاتحاد" أو "النصر")
@@ -164,42 +164,36 @@ async def run_monitor():
                     login_btn = page.locator("button:has-text('تسجيل الدخول')").first
                     await login_btn.click(force=True)
 
-                await page.wait_for_timeout(3000)
+                await page.wait_for_timeout(4000)
                 print("✅ [خطوة 4] تم تسجيل الدخول بنجاح!")
 
                 # --- 1. اختيار الشعار/الفريق ---
                 print(f"⚽ [خطوة 5] جاري اختيار بطاقة فريق ({TARGET_TEAM})...")
                 
-                await page.wait_for_load_state("networkidle")
-                await page.wait_for_timeout(2000)
+                # الانتظار الفعلي لظهور العنصر بالصفحة
+                target_xpath = f"//*[contains(text(), '{TARGET_TEAM}') or @alt='{TARGET_TEAM}']"
+                await page.wait_for_selector(target_xpath, timeout=10000)
 
-                # استراتيجيات متعددة لتحديد زر الفريق
-                team_selectors = [
-                    f"button[data-testid^='ui_toggle_favorite_team']:has-text('{TARGET_TEAM}')",
-                    f"button:has(img[alt='{TARGET_TEAM}'])",
-                    f"//button[.//text()[contains(., '{TARGET_TEAM}')]]",
-                    f"text='{TARGET_TEAM}'"
-                ]
+                # النقر المباشر باستخدام JS في حال كان الزر مغطى أو غير محدد
+                clicked = await page.evaluate(f"""(teamName) => {{
+                    const elements = Array.from(document.querySelectorAll('button, div, span, img'));
+                    for (let el of elements) {{
+                        if (el.innerText?.includes(teamName) || el.getAttribute('alt') === teamName) {{
+                            const btn = el.closest('button') || el;
+                            btn.scrollIntoView({{behavior: 'smooth', block: 'center'}});
+                            btn.click();
+                            return true;
+                        }}
+                    }}
+                    return false;
+                }}""", TARGET_TEAM)
 
-                team_card = None
-                for selector in team_selectors:
-                    try:
-                        loc = page.locator(selector).last
-                        if await loc.is_visible(timeout=3000):
-                            team_card = loc
-                            print(f"🎯 تم إيجاد البطاقة باستخدام المحدد: {selector}")
-                            break
-                    except Exception:
-                        continue
-
-                if team_card:
-                    await team_card.scroll_into_view_if_needed()
-                    await team_card.click(force=True)
-                    print(f"✅ تم تحديد فريق ({TARGET_TEAM}) بنجاح.")
+                if clicked:
+                    print(f"✅ تم تحديد فريق ({TARGET_TEAM}) بنجاح عبر JS.")
                 else:
-                    raise Exception(f"لم يتم العثور على بطاقة الفريق ({TARGET_TEAM}) بأي محدد!")
+                    raise Exception(f"لم يتم العثور على عنصر الفريق ({TARGET_TEAM})")
 
-                await page.wait_for_timeout(1500)
+                await page.wait_for_timeout(2000)
 
                 # --- 2. تحديد مربع أوافق (Checkbox) ---
                 print("☑️ [خطوة 6] تحديد مربع الشروط (Checkbox)...")
@@ -208,7 +202,7 @@ async def run_monitor():
                     if not await checkbox.is_checked():
                         await checkbox.check(force=True)
                         print("✅ تم تفعيل مربع الموافقة.")
-                await page.wait_for_timeout(500)
+                await page.wait_for_timeout(1000)
 
                 # --- 3. النقر على زر التالي ---
                 print("➡️ [خطوة 7] النقر على زر (التالي / اختيار التذاكر)...")
@@ -284,11 +278,8 @@ async def run_monitor():
         except Exception as e:
             print(f"❌ حدث خطأ غير متوقع أثناء التنفيذ: {e}")
             try:
-                # التقاط صورة الصفحة وقت الخطأ
                 await page.screenshot(path="error_screenshot.png")
                 print("📸 تم حفظ صورة لمكان التوقف: error_screenshot.png")
-                
-                # إرسال الصورة مباشرة للتليجرام مع نص الخطأ
                 send_telegram_photo("error_screenshot.png", f"❌ توقف السكربت عند الخطأ التالي:\n`{e}`")
             except Exception as img_err:
                 print(f"فشل التقاط أو إرسال الصورة: {img_err}")
