@@ -28,14 +28,14 @@ def send_telegram(message):
     except Exception as e:
         print(f"❌ فشل إرسال التنبيه عبر التليجرام: {e}")
 
-def send_telegram_photo(photo_path, caption="📸 صورة الخطأ"):
+def send_telegram_photo(photo_path, caption="📸 صورة من السكربت"):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
     try:
         with open(photo_path, "rb") as photo:
             payload = {"chat_id": TELEGRAM_CHAT_ID, "caption": caption}
             files = {"photo": photo}
             requests.post(url, data=payload, files=files, timeout=15)
-            print("📬 تم إرسال صورة الخطأ إلى التليجرام بنجاح!")
+            print("📬 تم إرسال الصورة إلى التليجرام بنجاح!")
     except Exception as e:
         print(f"❌ فشل إرسال الصورة عبر التليجرام: {e}")
 
@@ -167,11 +167,10 @@ async def run_monitor():
                 await page.wait_for_timeout(4000)
                 print("✅ [خطوة 4] تم تسجيل الدخول بنجاح!")
 
-                # --- 1. اختيار الشعار/الفريق (محدّث ومباشر) ---
+                # --- 1. اختيار الشعار/الفريق ---
                 print(f"⚽ [خطوة 5] جاري اختيار بطاقة فريق ({TARGET_TEAM})...")
                 await page.wait_for_timeout(2000)
 
-                # النقر المباشر عبر JS على البطاقة التفاعلية واستبعاد عنوان الصفحة <title>
                 clicked = await page.evaluate(f"""(teamName) => {{
                     const interactiveElements = Array.from(document.querySelectorAll('button, div[role="button"], a, div'));
                     
@@ -217,6 +216,14 @@ async def run_monitor():
                 await next_btn.wait_for(state="visible", timeout=5000)
                 await next_btn.click(force=True)
                 print("✅ تم التجاوز والنقر على زر التالي بنجاح.")
+
+            # --- التقاط وإرسال صورة للمكان الذي وصل إليه السكربت ---
+            await page.wait_for_timeout(3000)
+            try:
+                await page.screenshot(path="step_screenshot.png")
+                send_telegram_photo("step_screenshot.png", "📍 حالة الصفحة بعد تجاوز خطوة الدخول واختيار الفريق")
+            except Exception as e:
+                print(f"⚠️ تعذر التقاط صورة الحالة: {e}")
 
             # --- الكابتشا تظهر فقط بعد تجاوز خطوة التالي ---
             print("⏳ [خطوة 8] جاري فحص واكتشاف وجود كابتشا Cloudflare الآن...")
