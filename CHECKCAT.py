@@ -98,14 +98,12 @@ async def handle_response(response):
         except Exception:
             pass
 
-    # التقاط طلبات API الخاصة بالخريطة والمقاعد (Webook + Seatcloud)
     if any(k in url for k in ["seatcloud.com", "seats", "map", "availability", "categories", "sections", "manifest", "event", "chart"]):
         try:
             if response.status == 200 and "json" in response.headers.get("content-type", ""):
                 data = await response.json()
                 if isinstance(data, dict) or isinstance(data, list):
                     seats_data_store.append({"url": url, "data": data})
-                    print(f"📥 تم التقاط بيانات مقاعد من الشبكة: {url[:60]}...")
         except Exception:
             pass
 
@@ -155,56 +153,80 @@ async def close_instruction_modal(page):
         pass
 
 async def click_target_section(page, section_num):
-    print(f"🎯 جاري النقر المباشر على المربع {section_num}...")
-    selector = f"xpath=//*[name()='text' or name()='tspan' or name()='g'][text()='{section_num}']"
-    try:
-        element = page.locator(selector).first
-        if await element.is_visible(timeout=3000):
-            await element.scroll_into_view_if_needed()
-            await element.click(force=True)
-            print(f"✅ تم النقر المباشر على المربع {section_num}.")
-            return True
-    except Exception as e:
-        print(f"⚠️ تجربة النقر التفاعلي عبر JS: {e}")
+    print(f"🎯 جاري محاولة الدخول والمشاهدة التفصيلية للمربع {section_num}...")
+    
+    # 1. البحث بالنص
+    selectors = [
+        f"text='{section_num}'",
+        f"xpath=//*[text()='{section_num}']",
+        f"xpath=//*[name()='text' or name()='tspan'][text()='{section_num}']"
+    ]
+    
+    for sel in selectors:
+        try:
+            loc = page.locator(sel).first
+            if await loc.is_visible(timeout=2000):
+                await loc.click(force=True)
+                print(f"✅ تم النقر بواسطة المحدد: {sel}")
+                await page.wait_for_timeout(3000)
+                return True
+        except Exception:
+            pass
 
-    return await page.evaluate(f"""(sec) => {{
-        const allTexts = Array.from(document.querySelectorAll('text, tspan, g, path, div'));
-        for (let el of allTexts) {{
-            if ((el.textContent || '').trim() === sec) {{
+    # 2. النقر بالنص عبر الجافاسكربت وإطلاق أحدث mouseup/mousedown
+    clicked = await page.evaluate(f"""(sec) => {{
+        const elems = Array.from(document.querySelectorAll('*'));
+        for (let el of elems) {{
+            if (el.children.length === 0 && (el.textContent || '').trim() === sec) {{
                 const target = el.closest('g') || el;
                 target.scrollIntoView({{behavior: 'instant', block: 'center'}});
-                target.click();
+                
+                ['mousedown', 'mouseup', 'click'].forEach(evtType => {{
+                    target.dispatchEvent(new MouseEvent(evtType, {{
+                        bubbles: true,
+                        cancelable: true,
+                        view: window
+                    }}));
+                }});
                 return true;
             }}
         }}
         return false;
     }}""", section_num)
 
-async def count_blue_interactive_seats(page):
-    """فحص المقاعد المتاحة من داخل iframe الخريطة وعنصر الـ Canvas"""
+    if clicked:
+        print("✅ تم تنفيذ إشارات الضغط على المربع عبر JavaScript.")
+        await page.wait_for_timeout(3000)
+        return True
+
+    # 3. إذا كان الـ Canvas يغطي المربع، النقر المباشر في منطقة المربع 525 (أعلى الخريطة الوسطى)
     try:
-        # 1. محاولة قراءة البيانات المباشرة من كائنات الخريطة داخل الإطارات
-        seats_count = await page.evaluate("""() => {
-            try {
-                for (let i = 0; i < window.frames.length; i++) {
-                    try {
-                        const frameWin = window.frames[i];
-                        if (frameWin.chart || frameWin.seats || frameWin.seatcloud) {
-                            const chartObj = frameWin.chart || frameWin.seats;
-                            if (chartObj && typeof chartObj.getAvailableSeats === 'function') {
-                                return chartObj.getAvailableSeats().length;
-                            }
-                        }
-                    } catch(e) {}
-                }
-            } catch(e) {}
-            return -1;
-        }""")
+        canvas = page.locator("canvas#canvas, iframe[src*='seatcloud']").first
+        if await canvas.is_visible(timeout=2000):
+            box = await canvas.bounding_box()
+            if box:
+                # المربع 525 يقع تقريباً في الجزء العلوي الأوسط من الخريطة
+                click_x = box['x'] + (box['width'] * 0.58)
+                click_y = box['y'] + (box['height'] * 0.18)
+                await page.mouse.click(click_x, click_y)
+                print(f"🎯 تم النقر التقديري على موقع المربع 525 داخل Canvas ({click_x}, {click_y})")
+                await page.wait_for_timeout(3000)
+                return True
+    except Exception as e:
+        print(f"⚠️ فشل النقر المباشر عبر الكانفاس: {e}")
 
-        if seats_count != -1 and seats_count > 0:
-            return seats_count
+    return False
 
-        # 2. فحص حالة النصوص والشاشات التفاعلية المضمنة داخل الـ iframe
+async def count_blue_interactive_seats(page):
+    """فحص واحتساب المقاعد من شاشة العرض التفصيلية أو الـ API"""
+    try:
+        # فحص وجود كلمة 'انقر للاختيار' أو بيانات الصف والمقعد
+        page_text = await page.evaluate("() => document.body.innerText || ''")
+        
+        if "انقر للاختيار" in page_text or "انقر لـ الاختيار" in page_text or "الصف" in page_text:
+            return 1
+
+        # فحص إضافي من داخل الـ Canvas / iframe
         iframe_text = await page.evaluate("""() => {
             let text = '';
             document.querySelectorAll('iframe').forEach(f => {
@@ -215,11 +237,11 @@ async def count_blue_interactive_seats(page):
             return text;
         }""")
 
-        if "30" in iframe_text or "انقر" in iframe_text or "اختر" in iframe_text:
+        if "30" in iframe_text or "انقر" in iframe_text:
             return 1
 
     except Exception as e:
-        print(f"⚠️ تنبيه أثناء فحص iframe: {e}")
+        print(f"⚠️ تنبيه أثناء فحص المقاعد: {e}")
 
     return 0
 
@@ -322,12 +344,16 @@ async def run_monitor():
             # --- إغلاق نافذة التعليمات ---
             await close_instruction_modal(page)
 
+            # --- الانتظار حتى اكتمال تحميل الخريطة العامة ---
+            print("⏳ الانتظار لاكتمال استقرار الخريطة...")
+            await page.wait_for_timeout(4000)
+
             # --- الولوج والتعمق داخل المربع 525 ---
             await click_target_section(page, TARGET_SECTION)
-            print("⏳ الانتظار لتطبيق التكبير وفتح خريطة التذاكر الزرقاء...")
-            await page.wait_for_timeout(5000)
+            print("⏳ الانتظار 6 ثوانٍ لتطبيق التكبير وفتح خريطة التذاكر التفصيلية...")
+            await page.wait_for_timeout(6000)
 
-            # --- فحص المقاعد الزرقاء المتاحة ---
+            # --- فحص المقاعد المتاحة ---
             print("🔍 جاري فحص واحتساب التذاكر والمقاعد الشاغرة...")
             
             blue_seats_count = await count_blue_interactive_seats(page)
@@ -337,7 +363,7 @@ async def run_monitor():
             if seats_data_store:
                 for item in seats_data_store:
                     raw_str = json.dumps(item.get("data", {}))
-                    if "AVAILABLE" in raw_str or "available" in raw_str or "free" in raw_str:
+                    if "525" in raw_str and ("AVAILABLE" in raw_str or "available" in raw_str or "free" in raw_str):
                         count = raw_str.count("AVAILABLE") + raw_str.count('"status":"available"')
                         if count > api_seats_count:
                             api_seats_count = count
@@ -349,7 +375,7 @@ async def run_monitor():
             
             if total_available > 0:
                 report += f"🟢 *الحالة:* تذاكر متاحة وموجودة! (انقر للإختيار)\n"
-                report += f"🪑 *عدد المقاعد الزرقاء المتاحة:* `{total_available}` مقعد.\n"
+                report += f"🪑 *عدد المقاعد المتاحة:* `{total_available}` مقعد على الأقل.\n"
             else:
                 report += f"🔴 *الحالة:* لم يتم التقاط مقاعد زرقاء في الوقت الحالي.\n"
 
