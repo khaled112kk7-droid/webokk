@@ -12,7 +12,7 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 CAPTCHA_API_KEY = os.getenv("CAPTCHA_API_KEY")
 
 EVENT_URL = "https://webook.com/ar/sa/jed/sports-event/events/rsl-al-ittihad-vs-al-nassr-050926/book"
-TARGET_CATEGORIES = ["Premium", "Premium 2"]
+TARGET_CATEGORIES = ["525", "CAT 5"]
 
 # اسم الفريق المطلوب تحديده ("الاتحاد" أو "النصر")
 TARGET_TEAM = "الاتحاد"
