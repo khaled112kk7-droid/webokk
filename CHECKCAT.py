@@ -98,16 +98,14 @@ async def handle_response(response):
         except Exception:
             pass
 
-    if any(k in url for k in ["seat", "map", "layout", "availability", "categories", "sections", "manifest", "event"]):
+    # التقاط طلبات API الخاصة بالخريطة والمقاعد (Webook + Seatcloud)
+    if any(k in url for k in ["seatcloud.com", "seats", "map", "availability", "categories", "sections", "manifest", "event", "chart"]):
         try:
             if response.status == 200 and "json" in response.headers.get("content-type", ""):
                 data = await response.json()
-                if isinstance(data, dict):
-                    extracted = data.get("seats") or data.get("data") or data.get("categories") or data.get("sections") or data.get("manifest") or []
-                    if extracted:
-                        seats_data_store.append(data)
-                elif isinstance(data, list):
-                    seats_data_store.extend(data)
+                if isinstance(data, dict) or isinstance(data, list):
+                    seats_data_store.append({"url": url, "data": data})
+                    print(f"📥 تم التقاط بيانات مقاعد من الشبكة: {url[:60]}...")
         except Exception:
             pass
 
@@ -183,39 +181,47 @@ async def click_target_section(page, section_num):
     }}""", section_num)
 
 async def count_blue_interactive_seats(page):
-    """فحص المقاعد المتاحة باللون الأزرق والتي تحمل خيار (انقر للاختيار)"""
-    return await page.evaluate("""() => {
-        let availableCount = 0;
+    """فحص المقاعد المتاحة من داخل iframe الخريطة وعنصر الـ Canvas"""
+    try:
+        # 1. محاولة قراءة البيانات المباشرة من كائنات الخريطة داخل الإطارات
+        seats_count = await page.evaluate("""() => {
+            try {
+                for (let i = 0; i < window.frames.length; i++) {
+                    try {
+                        const frameWin = window.frames[i];
+                        if (frameWin.chart || frameWin.seats || frameWin.seatcloud) {
+                            const chartObj = frameWin.chart || frameWin.seats;
+                            if (chartObj && typeof chartObj.getAvailableSeats === 'function') {
+                                return chartObj.getAvailableSeats().length;
+                            }
+                        }
+                    } catch(e) {}
+                }
+            } catch(e) {}
+            return -1;
+        }""")
 
-        // فحص العناصر الزرقاء والمربعات التفاعلية في خريطة المقاعد
-        const elements = Array.from(document.querySelectorAll('rect, path, circle, g, div[role="button"]'));
+        if seats_count != -1 and seats_count > 0:
+            return seats_count
 
-        elements.forEach(el => {
-            const fill = (el.getAttribute('fill') || '').toLowerCase();
-            const style = (window.getComputedStyle(el).backgroundColor || '').toLowerCase();
-            const classList = el.className ? String(el.className) : '';
+        # 2. فحص حالة النصوص والشاشات التفاعلية المضمنة داخل الـ iframe
+        iframe_text = await page.evaluate("""() => {
+            let text = '';
+            document.querySelectorAll('iframe').forEach(f => {
+                try {
+                    text += f.contentWindow.document.body.innerText || '';
+                } catch(e) {}
+            });
+            return text;
+        }""")
 
-            // تمييز المقاعد المتاحة باللون الأزرق/الأرجواني النشط
-            const isBlue = fill.includes('#4f46e5') || fill.includes('#6366f1') || fill.includes('#3b82f6') ||
-                           style.includes('rgb(79, 70, 229)') || style.includes('rgb(99, 102, 241)') ||
-                           fill.includes('blue') || fill.includes('purple');
+        if "30" in iframe_text or "انقر" in iframe_text or "اختر" in iframe_text:
+            return 1
 
-            // التمييز عن المقاعد الرمادية/الداكنة المغلقة
-            const isDarkOrGray = fill.includes('#2c2c2c') || fill.includes('#333333') || fill.includes('#1e1e1e') || fill.includes('#555');
+    except Exception as e:
+        print(f"⚠️ تنبيه أثناء فحص iframe: {e}")
 
-            if (isBlue && !isDarkOrGray) {
-                availableCount++;
-            }
-        });
-
-        // التأكد من وجود نص 'انقر للاختيار' في الشاشة
-        const pageText = document.body.innerText || '';
-        if ((pageText.includes('انقر للاختيار') || pageText.includes('انقر لـ الاختيار')) && availableCount === 0) {
-            availableCount = 1;
-        }
-
-        return availableCount;
-    }""")
+    return 0
 
 async def run_monitor():
     global seats_data_store, detected_sitekey
@@ -322,17 +328,19 @@ async def run_monitor():
             await page.wait_for_timeout(5000)
 
             # --- فحص المقاعد الزرقاء المتاحة ---
-            print("🔍 جاري فحص واحتساب التذاكر والمقاعد الزرقاء الشاغرة...")
+            print("🔍 جاري فحص واحتساب التذاكر والمقاعد الشاغرة...")
             
             blue_seats_count = await count_blue_interactive_seats(page)
 
-            # مطابقة إضافية عبر استجابة الـ API في حال توفرها
+            # تحليل استجابات الـ API الملتقطة من seatcloud/webook
             api_seats_count = 0
             if seats_data_store:
-                for payload in seats_data_store:
-                    str_payload = json.dumps(payload)
-                    if TARGET_SECTION in str_payload and ("30" in str_payload or "AVAILABLE" in str_payload):
-                        api_seats_count += 1
+                for item in seats_data_store:
+                    raw_str = json.dumps(item.get("data", {}))
+                    if "AVAILABLE" in raw_str or "available" in raw_str or "free" in raw_str:
+                        count = raw_str.count("AVAILABLE") + raw_str.count('"status":"available"')
+                        if count > api_seats_count:
+                            api_seats_count = count
 
             total_available = max(blue_seats_count, api_seats_count)
 
