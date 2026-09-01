@@ -28,6 +28,17 @@ def send_telegram(message):
     except Exception as e:
         print(f"❌ فشل إرسال التنبيه عبر التليجرام: {e}")
 
+def send_telegram_photo(photo_path, caption="📸 صورة الخطأ"):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
+    try:
+        with open(photo_path, "rb") as photo:
+            payload = {"chat_id": TELEGRAM_CHAT_ID, "caption": caption}
+            files = {"photo": photo}
+            requests.post(url, data=payload, files=files, timeout=15)
+            print("📬 تم إرسال صورة الخطأ إلى التليجرام بنجاح!")
+    except Exception as e:
+        print(f"❌ فشل إرسال الصورة عبر التليجرام: {e}")
+
 async def solve_turnstile_captcha(page, sitekey):
     if not CAPTCHA_API_KEY:
         print("⚠️ لم يتم ضبط CAPTCHA_API_KEY في GitHub Secrets.")
@@ -273,10 +284,14 @@ async def run_monitor():
         except Exception as e:
             print(f"❌ حدث خطأ غير متوقع أثناء التنفيذ: {e}")
             try:
+                # التقاط صورة الصفحة وقت الخطأ
                 await page.screenshot(path="error_screenshot.png")
                 print("📸 تم حفظ صورة لمكان التوقف: error_screenshot.png")
-            except Exception:
-                pass
+                
+                # إرسال الصورة مباشرة للتليجرام مع نص الخطأ
+                send_telegram_photo("error_screenshot.png", f"❌ توقف السكربت عند الخطأ التالي:\n`{e}`")
+            except Exception as img_err:
+                print(f"فشل التقاط أو إرسال الصورة: {img_err}")
         finally:
             print("🏁 إغلاق المتصفح وإنهاء السكربت.")
             await browser.close()
