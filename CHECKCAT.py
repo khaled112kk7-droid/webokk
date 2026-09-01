@@ -216,14 +216,6 @@ async def run_monitor():
                 else:
                     print("ℹ️ لم تُظهر الصفحة واجهة اختيار الفريق، الانتقال المباشر للخطوة 8...")
 
-            # --- التقاط وإرسال صورة للمكان الذي وصل إليه السكربت ---
-            await page.wait_for_timeout(2000)
-            try:
-                await page.screenshot(path="step_screenshot.png")
-                send_telegram_photo("step_screenshot.png", "📍 حالة الصفحة بعد مرحلة تسجيل الدخول/اختيار الفريق")
-            except Exception as e:
-                print(f"⚠️ تعذر التقاط صورة الحالة: {e}")
-
             # --- الكابتشا تظهر في الخطوة 8 ---
             print("⏳ [خطوة 8] جاري فحص واكتشاف وجود كابتشا Cloudflare الآن...")
             for _ in range(8):
@@ -282,11 +274,14 @@ async def run_monitor():
                     else:
                         report += f"❌ *{category}:* غير متاحة أو نفدت.\n"
 
-            if send_alert:
-                send_telegram(report)
-                print("📬 تم إرسال التنبيه الفوري بالتليجرام بنجاح!")
-            else:
-                print("ℹ️ فحص مكتمل: لا توجد مقاعد متاحة حالياً للفئات المحددة.")
+            # --- التقاط صورة لنتيجة الفحص المكتمل وإرسالها للتليجرام ---
+            try:
+                await page.screenshot(path="completed_screenshot.png")
+                send_telegram_photo("completed_screenshot.png", f"🏁 *حالة خريطة المقاعد عند اكتمال الفحص*\n\n{report}")
+            except Exception as img_err:
+                print(f"⚠️ تعذر التقاط صورة الفحص المكتمل: {img_err}")
+                if send_alert:
+                    send_telegram(report)
 
         except Exception as e:
             print(f"❌ حدث خطأ غير متوقع أثناء التنفيذ: {e}")
