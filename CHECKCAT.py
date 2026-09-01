@@ -12,7 +12,7 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 CAPTCHA_API_KEY = os.getenv("CAPTCHA_API_KEY")
 
 EVENT_URL = "https://webook.com/ar/sa/jed/sports-event/events/rsl-al-ittihad-vs-al-nassr-050926/book"
-TARGET_CATEGORIES = ["525", "CAT 5"]
+TARGET_CATEGORIES = ["Premium", "Premium 2"]
 
 # اسم الفريق المطلوب تحديده ("الاتحاد" أو "النصر")
 TARGET_TEAM = "الاتحاد"
@@ -167,9 +167,9 @@ async def run_monitor():
                 await page.wait_for_timeout(4000)
                 print("✅ [خطوة 4] تم تسجيل الدخول بنجاح!")
 
-                # --- 1. اختيار الشعار/الفريق ---
-                print(f"⚽ [خطوة 5] جاري اختيار بطاقة فريق ({TARGET_TEAM})...")
-                await page.wait_for_timeout(2000)
+                # --- 1. اختيار الشعار/الفريق (مرن) ---
+                print(f"⚽ [خطوة 5] جاري الفحص لاختيار بطاقة فريق ({TARGET_TEAM})...")
+                await page.wait_for_timeout(1500)
 
                 clicked = await page.evaluate(f"""(teamName) => {{
                     const interactiveElements = Array.from(document.querySelectorAll('button, div[role="button"], a, div'));
@@ -190,42 +190,41 @@ async def run_monitor():
 
                 if not clicked:
                     img_locator = page.locator(f"img[alt='{TARGET_TEAM}']").first
-                    if await img_locator.is_visible(timeout=5000):
+                    if await img_locator.is_visible(timeout=2000):
                         await img_locator.click(force=True)
                         clicked = True
 
                 if clicked:
                     print(f"✅ تم تحديد فريق ({TARGET_TEAM}) بنجاح.")
+                    await page.wait_for_timeout(1500)
+
+                    # --- 2. تحديد مربع أوافق (Checkbox) ---
+                    print("☑️ [خطوة 6] تحديد مربع الشروط (Checkbox)...")
+                    checkbox = page.locator("input[type='checkbox'], [role='checkbox']").first
+                    if await checkbox.is_visible(timeout=3000):
+                        if not await checkbox.is_checked():
+                            await checkbox.check(force=True)
+                            print("✅ تم تفعيل مربع الموافقة.")
+                    await page.wait_for_timeout(1000)
+
+                    # --- 3. النقر على زر التالي ---
+                    print("➡️ [خطوة 7] النقر على زر (التالي / اختيار التذاكر)...")
+                    next_btn = page.locator("button:has-text('التالي'), button:has-text('اختيار التذاكر')").first
+                    if await next_btn.is_visible(timeout=3000):
+                        await next_btn.click(force=True)
+                        print("✅ تم التجاوز والنقر على زر التالي بنجاح.")
                 else:
-                    raise Exception(f"لم يتم العثور على بطاقة الفريق ({TARGET_TEAM})")
-
-                await page.wait_for_timeout(1500)
-
-                # --- 2. تحديد مربع أوافق (Checkbox) ---
-                print("☑️ [خطوة 6] تحديد مربع الشروط (Checkbox)...")
-                checkbox = page.locator("input[type='checkbox'], [role='checkbox']").first
-                if await checkbox.is_visible(timeout=5000):
-                    if not await checkbox.is_checked():
-                        await checkbox.check(force=True)
-                        print("✅ تم تفعيل مربع الموافقة.")
-                await page.wait_for_timeout(1000)
-
-                # --- 3. النقر على زر التالي ---
-                print("➡️ [خطوة 7] النقر على زر (التالي / اختيار التذاكر)...")
-                next_btn = page.locator("button:has-text('التالي'), button:has-text('اختيار التذاكر')").first
-                await next_btn.wait_for(state="visible", timeout=5000)
-                await next_btn.click(force=True)
-                print("✅ تم التجاوز والنقر على زر التالي بنجاح.")
+                    print("ℹ️ لم تُظهر الصفحة واجهة اختيار الفريق، الانتقال المباشر للخطوة 8...")
 
             # --- التقاط وإرسال صورة للمكان الذي وصل إليه السكربت ---
-            await page.wait_for_timeout(3000)
+            await page.wait_for_timeout(2000)
             try:
                 await page.screenshot(path="step_screenshot.png")
-                send_telegram_photo("step_screenshot.png", "📍 حالة الصفحة بعد تجاوز خطوة الدخول واختيار الفريق")
+                send_telegram_photo("step_screenshot.png", "📍 حالة الصفحة بعد مرحلة تسجيل الدخول/اختيار الفريق")
             except Exception as e:
                 print(f"⚠️ تعذر التقاط صورة الحالة: {e}")
 
-            # --- الكابتشا تظهر فقط بعد تجاوز خطوة التالي ---
+            # --- الكابتشا تظهر في الخطوة 8 ---
             print("⏳ [خطوة 8] جاري فحص واكتشاف وجود كابتشا Cloudflare الآن...")
             for _ in range(8):
                 await page.wait_for_timeout(1000)
