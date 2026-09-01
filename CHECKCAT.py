@@ -11,7 +11,7 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 CAPTCHA_API_KEY = os.getenv("CAPTCHA_API_KEY")
 
-EVENT_URL = "https://webook.com/ar/SA/RUH/sports-event/events/rsl-26-27-al-shabab-vs-al-hilal-227984/book"
+EVENT_URL = "https://webook.com/ar/sa/jed/sports-event/events/rsl-al-ittihad-vs-al-nassr-050926/book"
 TARGET_CATEGORIES = ["Premium", "Premium 2"]
 
 # اسم الفريق المطلوب تحديده ("الاتحاد" أو "النصر")
