@@ -186,22 +186,21 @@ async def count_blue_interactive_seats(page):
     """فحص المقاعد المتاحة باللون الأزرق والتي تحمل خيار (انقر للاختيار)"""
     return await page.evaluate("""() => {
         let availableCount = 0;
-        let detectedDetails = [];
 
-        // 1. فحص العناصر الشفافة والمربعات الزرقاء في خريطة المقاعد التفصيلية
+        // فحص العناصر الزرقاء والمربعات التفاعلية في خريطة المقاعد
         const elements = Array.from(document.querySelectorAll('rect, path, circle, g, div[role="button"]'));
 
         elements.forEach(el => {
             const fill = (el.getAttribute('fill') || '').toLowerCase();
             const style = (window.getComputedStyle(el).backgroundColor || '').toLowerCase();
-            const classList = el.className ? str(el.className) : '';
+            const classList = el.className ? String(el.className) : '';
 
-            // تمييز المقاعد المتاحة باللون الأزرق/الأرجواني المخصص للمقاعد الشاغرة
+            // تمييز المقاعد المتاحة باللون الأزرق/الأرجواني النشط
             const isBlue = fill.includes('#4f46e5') || fill.includes('#6366f1') || fill.includes('#3b82f6') ||
                            style.includes('rgb(79, 70, 229)') || style.includes('rgb(99, 102, 241)') ||
                            fill.includes('blue') || fill.includes('purple');
 
-            // المقاعد غير المتاحة تكون رمادية/داكنة (#2c2c2c, #333333, #1e1e1e)
+            // التمييز عن المقاعد الرمادية/الداكنة المغلقة
             const isDarkOrGray = fill.includes('#2c2c2c') || fill.includes('#333333') || fill.includes('#1e1e1e') || fill.includes('#555');
 
             if (isBlue && !isDarkOrGray) {
@@ -209,11 +208,10 @@ async def count_blue_interactive_seats(page):
             }
         });
 
-        // 2. فحص حالة المقاعد إذا ظهرت نافذة/Tooltip التذاكر (انقر للاختيار)
+        // التأكد من وجود نص 'انقر للاختيار' في الشاشة
         const pageText = document.body.innerText || '';
-        if (pageText.includes('انقر للاختيار') || pageText.includes('انقر لـ الاختيار')) {
-            // إذا وُجد مقعد واحد متاح على الأقل ويظهر التول تيب الخاص به
-            if (availableCount === 0) availableCount = 1;
+        if ((pageText.includes('انقر للاختيار') || pageText.includes('انقر لـ الاختيار')) && availableCount === 0) {
+            availableCount = 1;
         }
 
         return availableCount;
