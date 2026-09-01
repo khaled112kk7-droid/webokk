@@ -14,8 +14,9 @@ CAPTCHA_API_KEY = os.getenv("CAPTCHA_API_KEY")
 EVENT_URL = "https://webook.com/ar/sa/jed/sports-event/events/rsl-al-ittihad-vs-al-nassr-050926/book"
 TARGET_CATEGORIES = ["525", "CAT 5"]
 
-# اسم الفريق المطلوب تحديده ("الاتحاد" أو "النصر")
+# تحديد الفريق والمربع المستهدف
 TARGET_TEAM = "الاتحاد"
+TARGET_SECTION = "525"
 
 seats_data_store = []
 detected_sitekey = None
@@ -160,50 +161,12 @@ async def close_instruction_modal(page):
     except Exception:
         pass
 
-async def change_currency_to_sar(page):
-    """تغيير العملة إلى الريال السعودي SAR في حال ظهرت بالدولار $"""
-    print("💱 جاري فحص وتحويل العملة إلى الريال السعودي (SAR)...")
-    try:
-        # البحث عن أيقونة أو زر العملة الذي يحتوي على علامة $
-        currency_btn = page.locator("button:has-text('$'), [aria-label*='currency']").first
-        if await currency_btn.is_visible(timeout=2500):
-            await currency_btn.click(force=True)
-            await page.wait_for_timeout(1000)
-
-            # النقر على خيار SAR أو ريال سعودي
-            sar_option = page.locator("text='SAR', text='SAR - الريال السعودي', text='ريال سعودي'").first
-            if await sar_option.is_visible(timeout=2000):
-                await sar_option.click(force=True)
-                print("✅ تم تغيير العملة بنجاح إلى الريال السعودي (SAR)!")
-                await page.wait_for_timeout(1000)
-            else:
-                # محاولة تحويل بواسطة JavaScript مباشرة في القائمة
-                await page.evaluate("""() => {
-                    const items = Array.from(document.querySelectorAll('button, div, li, span'));
-                    for (let item of items) {
-                        if ((item.innerText || '').includes('SAR') || (item.innerText || '').includes('ريال')) {
-                            item.click();
-                            return true;
-                        }
-                    }
-                    return false;
-                }""")
-    except Exception as e:
-        print(f"ℹ️ تجاوز تغيير العملة تلقائياً: {e}")
-
 async def run_monitor():
     global seats_data_store, detected_sitekey
     async with async_playwright() as p:
         print("🚀 بدء تشغيل المتصفح...")
         browser = await p.chromium.launch(headless=True)
-        
-        # ضبط المنطقة واللغة السعودية لتجنب إظهار الدولار افتراضياً
-        context = await browser.new_context(
-            locale="ar-SA",
-            timezone_id="Asia/Riyadh",
-            geolocation={"latitude": 24.7136, "longitude": 46.6753},
-            permissions=["geolocation"]
-        )
+        context = await browser.new_context()
         page = await context.new_page()
 
         page.on("response", handle_response)
@@ -325,31 +288,40 @@ async def run_monitor():
             print("💡 [خطوة 9.5] جاري فحص وإغلاق نافذة التعليمات ('كيفية اختيار مقعد')...")
             await close_instruction_modal(page)
 
-            # --- تغيير العملة إلى الريال السعودي ---
-            print("💱 [خطوة 9.6] تغيير العملة إلى الريال السعودي (SAR)...")
-            await change_currency_to_sar(page)
-
             # --- استخراج البيانات والتنبيه ---
             print("⏳ [خطوة 10] انتظار فتح خريطة المقاعد وقراءة الـ API...")
             await page.wait_for_timeout(8000)
 
             report = "📊 *تقرير المقاعد المتاحة:*\n\n"
             send_alert = False
+            count_525 = 0
 
+            # 1. فحص المقاعد عبر الـ API
             if seats_data_store:
-                print(f"✅ تم اقتناص {len(seats_data_store)} عنصر مقاعد من الـ API مباشرة!")
+                print(f"✅ تم اقتناص {len(seats_data_store)} عنصر من الـ API مباشرة!")
+                
+                # تصفية الفئات العامة
                 for category in TARGET_CATEGORIES:
                     available_count = len([
                         s for s in seats_data_store 
                         if (s.get("status") in ["AVAILABLE", "available", "FREE", 1] or s.get("isAvailable") == True) 
                         and category.lower() in str(s.get("category") or s.get("name") or s.get("title") or "").lower()
                     ])
-                    
                     report += f"🔹 *{category}:* متبقي `{available_count}` مقعد.\n"
                     if available_count > 0:
                         send_alert = True
+
+                # تصفية المربع 525 تحديداً عبر الـ API
+                section_525_seats = [
+                    s for s in seats_data_store 
+                    if str(s.get("section") or s.get("section_id") or s.get("sectionName") or s.get("block") or s.get("section_code") or "").strip() == TARGET_SECTION
+                    and (s.get("status") in ["AVAILABLE", "available", "FREE", 1] or s.get("isAvailable") == True)
+                ]
+                count_525 = len(section_525_seats)
+
             else:
-                print("🔍 لم يتم اقتناص API المقاعد، جاري فحص نصوص الصفحة مباشرة...")
+                # 2. فحص نصوص الصفحة كخيار احتياطي
+                print("🔍 لم يتم اقتناص API المقاعد، جاري فحص نصوص الصفحة وخريطة الـ DOM...")
                 page_text = await page.content()
                 for category in TARGET_CATEGORIES:
                     if category in page_text:
@@ -357,6 +329,32 @@ async def run_monitor():
                         send_alert = True
                     else:
                         report += f"❌ *{category}:* غير متاحة أو نفدت.\n"
+
+            # 3. فحص المربع 525 من عناصر الـ DOM إن لم نصل له بالـ API
+            if count_525 == 0:
+                count_525 = await page.evaluate("""(targetSection) => {
+                    const seats = Array.from(document.querySelectorAll('circle, path, g, div[data-seat], rect'));
+                    let availableCount = 0;
+                    for (let seat of seats) {
+                        const sectionAttr = seat.getAttribute('data-section') || seat.getAttribute('section') || seat.getAttribute('id') || '';
+                        const isAvailable = seat.classList.contains('available') || seat.getAttribute('fill') === '#4b50ab' || seat.getAttribute('fill') === '#3b82f6';
+                        
+                        if (sectionAttr.includes(targetSection) && isAvailable) {
+                            availableCount++;
+                        }
+                    }
+                    return availableCount;
+                }""", TARGET_SECTION)
+
+            # إضافة نتيجة المربع 525 للتقرير
+            report += f"\n🎟️ *تفاصيل المربع {TARGET_SECTION} (CAT 5):*\n"
+            report += f"🔹 عدد المقاعد المتاحة: `{count_525}` مقعد.\n"
+            report += f"💵 السعر: `30 ﷼`"
+
+            if count_525 > 0:
+                send_alert = True
+
+            print(f"🎯 المربع {TARGET_SECTION}: يوجد {count_525} مقعد متاح.")
 
             # --- التقاط صورة لنتيجة الفحص المكتمل وإرسالها للتليجرام ---
             try:
