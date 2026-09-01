@@ -12,7 +12,7 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 CAPTCHA_API_KEY = os.getenv("CAPTCHA_API_KEY")
 
 EVENT_URL = "https://webook.com/ar/sa/jed/sports-event/events/rsl-al-ittihad-vs-al-nassr-050926/book"
-TARGET_CATEGORIES = ["Premium", "Premium 2"]
+TARGET_CATEGORIES = ["525", "CAT 5"]
 
 # اسم الفريق المطلوب تحديده ("الاتحاد" أو "النصر")
 TARGET_TEAM = "الاتحاد"
@@ -121,6 +121,26 @@ async def close_cookie_banner(page):
             await page.wait_for_timeout(1000)
     except Exception:
         pass
+
+async def close_instruction_modal(page):
+    """إغلاق نافذة التعليمات التعريفية 'كيفية اختيار مقعد' إذا ظهرت"""
+    try:
+        # البحث عن زر "حسناً" أو زر الإغلاق X
+        btn_okay = page.locator("button:has-text('حسناً'), button:has-text('حسنا'), button:has-text('Got it'), button:has-text('OK')").first
+        if await btn_okay.is_visible(timeout=3000):
+            await btn_okay.click(force=True)
+            print("💡 تم إغلاق نافذة التعليمات ('حسناً') بنجاح.")
+            await page.wait_for_timeout(1000)
+            return
+
+        # في حال كانت أيقونة إغلاق (X)
+        close_x = page.locator("div[role='dialog'] button, .modal button").first
+        if await close_x.is_visible(timeout=1000):
+            await close_x.click(force=True)
+            print("💡 تم إغلاق نافذة التعليمات من علامة الإغلاق.")
+            await page.wait_for_timeout(1000)
+    except Exception as e:
+        print(f"ℹ️ لم تظهر نافذة التعليمات أو تم تجاوزها: {e}")
 
 async def run_monitor():
     global seats_data_store, detected_sitekey
@@ -244,6 +264,10 @@ async def run_monitor():
                     print("✅ تم حل وتحقين توكن الكابتشا بنجاح!")
             else:
                 print("ℹ️ لم تُظهر الصفحة أي كابتشا، جاري التوجه مباشرة لخريطة المقاعد...")
+
+            # --- [جديد] التعامل مع نافذة التعليمات "كيفية اختيار مقعد" بعد الخطوة 9 ---
+            print("💡 [خطوة 9.5] جاري فحص وجود نافذة التعليمات ('كيفية اختيار مقعد')...")
+            await close_instruction_modal(page)
 
             # --- استخراج البيانات والتنبيه ---
             print("⏳ [خطوة 10] انتظار فتح خريطة المقاعد وقراءة الـ API...")
