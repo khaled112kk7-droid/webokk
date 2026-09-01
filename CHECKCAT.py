@@ -123,24 +123,47 @@ async def close_cookie_banner(page):
         pass
 
 async def close_instruction_modal(page):
-    """إغلاق نافذة التعليمات التعريفية 'كيفية اختيار مقعد' إذا ظهرت"""
+    """إغلاق نافذة 'كيفية اختيار مقعد' باستراتيجية قوية متكررة"""
+    print("💡 جاري فحص نافذة التعليمات محاولة الإغلاق...")
+    
+    # الانتظار حتى تكتمل أنيميشن الظهور
+    await page.wait_for_timeout(2500)
+
+    # 1. محاولة النقر باستخدام JS على زر يحتوي كلمة "حسناً" أياً كان نوع العنصر (div, button, span)
+    closed_via_js = await page.evaluate("""() => {
+        const elements = Array.from(document.querySelectorAll('button, div, span, a'));
+        for (let el of elements) {
+            const txt = (el.innerText || '').trim();
+            if (txt === 'حسناً' || txt === 'حسنا' || txt === 'Got it' || txt === 'OK') {
+                el.click();
+                return true;
+            }
+        }
+        return false;
+    }""")
+
+    if closed_via_js:
+        print("✅ تم إغلاق النافذة بواسطة JavaScript بالنقر على 'حسناً'.")
+        await page.wait_for_timeout(1000)
+        return
+
+    # 2. محاولة احتياطية عبر Playwright Selector
     try:
-        # البحث عن زر "حسناً" أو زر الإغلاق X
-        btn_okay = page.locator("button:has-text('حسناً'), button:has-text('حسنا'), button:has-text('Got it'), button:has-text('OK')").first
-        if await btn_okay.is_visible(timeout=3000):
+        btn_okay = page.locator("text='حسناً'").first
+        if await btn_okay.is_visible(timeout=2000):
             await btn_okay.click(force=True)
-            print("💡 تم إغلاق نافذة التعليمات ('حسناً') بنجاح.")
+            print("✅ تم إغلاق النافذة بالنقر على زر 'حسناً' عبر Playwright.")
             await page.wait_for_timeout(1000)
             return
+    except Exception:
+        pass
 
-        # في حال كانت أيقونة إغلاق (X)
-        close_x = page.locator("div[role='dialog'] button, .modal button").first
-        if await close_x.is_visible(timeout=1000):
-            await close_x.click(force=True)
-            print("💡 تم إغلاق نافذة التعليمات من علامة الإغلاق.")
-            await page.wait_for_timeout(1000)
-    except Exception as e:
-        print(f"ℹ️ لم تظهر نافذة التعليمات أو تم تجاوزها: {e}")
+    # 3. محاولة النقر على زر الإغلاق X أوالضغط على Escape
+    try:
+        await page.keyboard.press("Escape")
+        print("⌨️ تم إرسال أمر Escape لإغلاق النافذة.")
+    except Exception:
+        pass
 
 async def run_monitor():
     global seats_data_store, detected_sitekey
@@ -265,13 +288,13 @@ async def run_monitor():
             else:
                 print("ℹ️ لم تُظهر الصفحة أي كابتشا، جاري التوجه مباشرة لخريطة المقاعد...")
 
-            # --- [جديد] التعامل مع نافذة التعليمات "كيفية اختيار مقعد" بعد الخطوة 9 ---
-            print("💡 [خطوة 9.5] جاري فحص وجود نافذة التعليمات ('كيفية اختيار مقعد')...")
+            # --- إغلاق نافذة التعليمات (مع الانتظار لضمان ظهور النافذة كلياً) ---
+            print("💡 [خطوة 9.5] جاري فحص وإغلاق نافذة التعليمات ('كيفية اختيار مقعد')...")
             await close_instruction_modal(page)
 
             # --- استخراج البيانات والتنبيه ---
             print("⏳ [خطوة 10] انتظار فتح خريطة المقاعد وقراءة الـ API...")
-            await page.wait_for_timeout(10000)
+            await page.wait_for_timeout(8000)
 
             report = "📊 *تقرير المقاعد المتاحة:*\n\n"
             send_alert = False
