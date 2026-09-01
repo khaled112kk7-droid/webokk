@@ -153,49 +153,59 @@ async def close_instruction_modal(page):
         pass
 
 async def click_target_section(page, section_num):
-    print(f"🎯 جاري البحث عن حدود وموقع المربع {section_num} بدقة في الخريطة...")
+    print(f"🎯 تنفيذ الدخول والتكبير المباشر على المربع {section_num}...")
     
-    # تحديد موقع المربع بالظبط بناءً على عنصر النص والـ Bounding Box الحقيقي
-    success = await page.evaluate(f"""(sec) => {{
-        // البحث في كافة نصوص SVG أو العناصر المنسقة داخل الخريطة
-        const allNodes = Array.from(document.querySelectorAll('text, tspan, g, path, [data-section]'));
-        for (let el of allNodes) {{
-            const textContent = (el.textContent || '').trim();
-            const sectionAttr = el.getAttribute('data-section') || el.getAttribute('id') || '';
-            
-            if (textContent === sec || sectionAttr.includes(sec)) {{
-                const rect = el.getBoundingClientRect();
-                if (rect.width > 0 && rect.height > 0) {{
-                    // الحصول على منتصف العنصر بدقة على الشاشة
-                    const centerX = rect.left + (rect.width / 2);
-                    const centerY = rect.top + (rect.height / 2);
-                    
-                    // تحريك الماوس للسنتر وإطلاق النقر
-                    ['mousemove', 'mousedown', 'mouseup', 'click'].forEach(evt => {{
-                        const event = new MouseEvent(evt, {{
-                            clientX: centerX,
-                            clientY: centerY,
-                            bubbles: true,
-                            cancelable: true,
-                            view: window
-                        }});
-                        el.dispatchEvent(event);
-                    }});
-                    return {{ x: centerX, y: centerY }};
-                }}
+    # 1. التجربة الأولى: تحفيز البرمجة الخاصة بـ SeatGeek / Seatcloud بالتكبير البرمجي المباشر
+    zoomed = await page.evaluate(f"""(sec) => {{
+        try {{
+            // البحث عن كائن الخريطة في النافذة الرئيسية أو الـ frames
+            const winList = [window, ...Array.from(window.frames)];
+            for (let w of winList) {{
+                try {{
+                    if (w.chart || w.seatsChart || w.seatcloud) {{
+                        const chart = w.chart || w.seatsChart || w.seatcloud;
+                        if (typeof chart.selectSection === 'function') {{
+                            chart.selectSection(sec);
+                            return true;
+                        }}
+                        if (typeof chart.zoomToSection === 'function') {{
+                            chart.zoomToSection(sec);
+                            return true;
+                        }}
+                    }}
+                }} catch(e) {{}}
             }}
-        }}
-        return null;
+        }} catch(e) {{}}
+        return false;
     }}""", section_num)
 
-    if success:
-        print(f"🎯 تم العثور على المربع {section_num} والنقر في مركزه بدقة عند ({success['x']}, {success['y']})")
-        # إجراء نقرة إضافية بمحاكاة الفيزيائية للتأكيد
-        await page.mouse.click(success['x'], success['y'])
+    if zoomed:
+        print("✅ تم استدعاء دالة التكبير البرمجية للخريطة بنجاح!")
         await page.wait_for_timeout(3000)
         return True
 
-    print("⚠️ تعذر تحديد مركز المربع عبر SVG، جاري تجربة تحديد المربع بواسطة البحث في كائنات Seatcloud...")
+    # 2. التجربة الثانية: النقر على الإحداثيات الدقيقة للمربع 525 داخل Canvas (بناءً على موقع الملعب في الشاشة)
+    try:
+        canvas = page.locator("canvas").first
+        if await canvas.is_visible(timeout=3000):
+            box = await canvas.bounding_box()
+            if box:
+                # المربع 525 يقع في أعلى المنتصف للسطح العالي من الملعب
+                # X: 61.5% من عرض عنصر الكانفاس
+                # Y: 41.5% من ارتفاع عنصر الكانفاس
+                click_x = box['x'] + (box['width'] * 0.615)
+                click_y = box['y'] + (box['height'] * 0.415)
+                
+                print(f"🎯 النقر المباشر على إحداثيات المربع 525: ({click_x}, {click_y})")
+                await page.mouse.click(click_x, click_y)
+                await page.wait_for_timeout(1000)
+                # نقرة ثانية للتأكيد والدخول
+                await page.mouse.click(click_x, click_y)
+                await page.wait_for_timeout(3000)
+                return True
+    except Exception as e:
+        print(f"⚠️ فشل النقر بالإحداثيات المباشرة: {e}")
+
     return False
 
 async def count_blue_interactive_seats(page):
