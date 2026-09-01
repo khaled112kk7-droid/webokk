@@ -147,17 +147,16 @@ async def run_monitor():
 
                 await page.wait_for_timeout(3000)
                 print("تم تسجيل الدخول بنجاح!")
+                # 1. اختيار الفريق (مثلاً النصر)
+                page.locator("text=النصر").click()
 
-                # 2. النقر على كارت فريق الهلال (الحاوية الشاملة للنص والصورة)
-                await page.locator('div', has_text='الهلال').last.click()
+                # 2. تحديد مربع الصح (Checkbox)
+                checkbox = page.locator("input[type='checkbox'], [role='checkbox']")
+                if not checkbox.is_checked():
+                    checkbox.check()
 
-                # 3. تفعيل مربع "أوافق" بالنقر على النص
-                await page.click('p:has-text("أوافق على")')
-
-                # 4. الضغط على زر التالي عبر الـ testid
-                await page.click('[data-testid="ticketing_teams_confirm_team_button"]')
-                print("✅ تم الضغط بنجاح على زر اختيار التذاكر.")
-
+                # 3. النقر على زر التالي
+                page.locator("button:has-text('التالي'), button:has-text('اختيار التذاكر')").click()
             # انتظار اكتشاف كابتشا Cloudflare
             print("⏳ جاري انتظار واكتشاف كابتشا Cloudflare...")
             for _ in range(10):
