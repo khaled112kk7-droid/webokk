@@ -4,7 +4,7 @@ import json
 import requests
 from playwright.async_api import async_playwright
 
-# استدعاء المتغيرات من البيئة
+# استدعاء المتغيرات من البيئة (GitHub Secrets)
 PHONE = os.getenv("WEBOOK_EMIL")
 PASSWORD = os.getenv("WEBOOK_PASS")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -18,6 +18,7 @@ TARGET_TEAM = "الاتحاد"
 TARGET_SECTION = "525"
 
 seats_data_store = []
+sections_status_store = {}
 detected_sitekey = None
 
 def send_telegram(message):
@@ -88,7 +89,7 @@ async def solve_turnstile_captcha(page, sitekey):
         return False
 
 async def handle_response(response):
-    global seats_data_store, detected_sitekey
+    global seats_data_store, sections_status_store, detected_sitekey
     url = response.url.lower()
 
     if "challenges.cloudflare.com" in url and "k=" in url:
@@ -99,15 +100,23 @@ async def handle_response(response):
         except Exception:
             pass
 
-    # اقتناص الاستجابات الخاصة بالمقاعد والقطاعات
+    # التقاط الـ API الخاص ببيانات القطاعات والمقاعد
     if any(k in url for k in ["seat", "map", "layout", "availability", "categories", "sections", "manifest", "event"]):
         try:
             if response.status == 200 and "json" in response.headers.get("content-type", ""):
                 data = await response.json()
+                
+                # حفظ المربعات إذا كانت قائمة قطاعات
                 if isinstance(data, dict):
-                    extracted = data.get("seats") or data.get("data") or data.get("categories") or data.get("sections") or data.get("manifest") or []
-                    if extracted:
-                        seats_data_store.append(data)
+                    sections = data.get("sections") or data.get("data", {}).get("sections") or []
+                    for sec in sections:
+                        sec_id = str(sec.get("name") or sec.get("id") or sec.get("section_code") or "")
+                        if sec_id:
+                            sections_status_store[sec_id] = sec
+
+                    seats = data.get("seats") or data.get("data", {}).get("seats") or []
+                    if seats:
+                        seats_data_store.extend(seats)
                 elif isinstance(data, list):
                     seats_data_store.extend(data)
         except Exception:
@@ -124,8 +133,8 @@ async def close_cookie_banner(page):
         pass
 
 async def close_instruction_modal(page):
-    """إغلاق نافذة التعليمات"""
-    print("💡 جاري فحص نافذة التعليمات لمحاولة الإغلاق...")
+    """إغلاق نافذة 'كيفية اختيار مقعد'"""
+    print("💡 جاري فحص وإغلاق نافذة التعليمات...")
     await page.wait_for_timeout(2500)
 
     closed_via_js = await page.evaluate("""() => {
@@ -149,7 +158,7 @@ async def close_instruction_modal(page):
         btn_okay = page.locator("text='حسناً'").first
         if await btn_okay.is_visible(timeout=2000):
             await btn_okay.click(force=True)
-            print("✅ تم إغلاق النافذة بالنقر على زر 'حسناً'.")
+            print("✅ تم إغلاق النافذة عبر Playwright.")
             await page.wait_for_timeout(1000)
             return
     except Exception:
@@ -161,8 +170,46 @@ async def close_instruction_modal(page):
     except Exception:
         pass
 
+async def click_target_section(page, section_num):
+    """النقر المباشر والدقيق على نص المربع في خريطة الـ SVG"""
+    print(f"🎯 جاري محاولة الاستهداف والنقر المباشر على المربع {section_num}...")
+    
+    # 1. الاستهداف المباشر باستخدام XPath المخصص لعناصر SVG
+    selector = f"xpath=//*[name()='text' or name()='tspan' or name()='g'][text()='{section_num}']"
+    try:
+        element = page.locator(selector).first
+        if await element.is_visible(timeout=3000):
+            await element.scroll_into_view_if_needed()
+            await element.click(force=True)
+            print(f"✅ تم النقر المباشر على المربع {section_num} عبر XPath.")
+            return True
+    except Exception as e:
+        print(f"⚠️ لم نتمكن من النقر عبر XPath: {e}")
+
+    # 2. الاستهداف التفاعلي عبر JavaScript
+    clicked_js = await page.evaluate(f"""(sec) => {{
+        const allTexts = Array.from(document.querySelectorAll('text, tspan, g, path, div'));
+        for (let el of allTexts) {{
+            if ((el.textContent || '').trim() === sec) {{
+                const target = el.closest('g') || el;
+                target.scrollIntoView({{behavior: 'instant', block: 'center'}});
+                target.dispatchEvent(new MouseEvent('mousedown', {{ bubbles: true }}));
+                target.dispatchEvent(new MouseEvent('mouseup', {{ bubbles: true }}));
+                target.click();
+                return true;
+            }}
+        }}
+        return false;
+    }}""", section_num)
+
+    if clicked_js:
+        print(f"✅ تم النقر على المربع {section_num} عبر JavaScript Event.")
+        return True
+
+    return False
+
 async def run_monitor():
-    global seats_data_store, detected_sitekey
+    global seats_data_store, sections_status_store, detected_sitekey
     async with async_playwright() as p:
         print("🚀 بدء تشغيل المتصفح...")
         browser = await p.chromium.launch(headless=True)
@@ -280,103 +327,90 @@ async def run_monitor():
             # --- إغلاق نافذة التعليمات ---
             await close_instruction_modal(page)
 
-            # --- النقر المحسّن للولوج للمربع 525 وتنشيط خريطة المقاعد ---
-            print(f"🎯 [خطوة 10] النقر المباشر والدقيق على المربع {TARGET_SECTION}...")
+            # --- فحص حالة المربع 525 المباشرة (هل هو متاح أم رمادي/مغلق) ---
+            print(f"🔍 [خطوة 9.8] فحص حالة المربع {TARGET_SECTION} على الخريطة...")
             await page.wait_for_timeout(2000)
 
-            # محاولة النقر الحقيقي عبر إحداثيات العنصر أو نص المربع 525
-            click_success = await page.evaluate(f"""(sec) => {{
-                // البحث عن أشكال أو نصوص تتضمن 525 داخل الخريطة التفاعلية
-                const elements = Array.from(document.querySelectorAll('svg *, div, button, span'));
+            section_state = await page.evaluate(f"""(sec) => {{
+                const elements = Array.from(document.querySelectorAll('text, tspan, g, path'));
                 for (let el of elements) {{
-                    const txt = (el.textContent || '').trim();
-                    if (txt === sec) {{
-                        el.scrollIntoView({{behavior: 'instant', block: 'center'}});
-                        const rect = el.getBoundingClientRect();
-                        if (rect.width > 0 && rect.height > 0) {{
-                            el.dispatchEvent(new MouseEvent('mousedown', {{ bubbles: true }}));
-                            el.dispatchEvent(new MouseEvent('mouseup', {{ bubbles: true }}));
-                            el.click();
-                            return true;
-                        }}
+                    if ((el.textContent || '').trim() === sec) {{
+                        const container = el.closest('g') || el;
+                        const fill = container.getAttribute('fill') || el.getAttribute('fill') || '';
+                        const isGray = fill === '#2c2c2c' || fill === '#333333' || fill === '#1e1e1e';
+                        return {{
+                            found: true,
+                            isClosed: isGray,
+                            fillColor: fill
+                        }};
                     }}
                 }}
-                return false;
+                return {{ found: false, isClosed: true, fillColor: 'none' }};
             }}""", TARGET_SECTION)
 
-            if click_success:
-                print(f"✅ تم النقر التفاعلي على المربع {TARGET_SECTION}.")
-            else:
-                print(f"⚠️ جاري المحاولة باستخدام النقر بالنقاط المركزية لخريطة الخيارات...")
-                # نقر النواة المركزية المباشر لمركزي المربع 525
-                await page.mouse.click(640, 400)
-
+            # تنفيذ النقر المباشر والدقيق على المربع 525
+            await click_target_section(page, TARGET_SECTION)
             await page.wait_for_timeout(4000)
 
-            # --- قراءة واستخراج العدد المتاح للمقاعد ---
-            print("📊 [خطوة 11] تحليل واستخراج مقاعد المربع 525...")
+            # --- قراءة المقاعد وتحليل النتيجة ---
+            print("📊 [خطوة 10] قراءة نتائج المربع والـ API...")
             
-            count_525 = await page.evaluate(f"""(sec) => {{
-                // 1. القراءة من واجهة القائمة الجانبية أو عناصر الشاشة المباشرة
-                const pageText = document.body.innerText || '';
-                
-                // البحث عن عدد المقاعد المعروضة بالقرب من اسم المربع 525
-                const lines = pageText.split('\\n');
-                for (let i = 0; i < lines.length; i++) {{
-                    if (lines[i].includes(sec) || lines[i].includes('525')) {{
-                        for (let j = i; j < Math.min(i + 5, lines.length); j++) {{
-                            const match = lines[j].match(/(\\d+)\\s*(مقعد|مقاعد|تذكرة|تذاكر|متوفر|متاح)/);
-                            if (match) return parseInt(match[1]);
-                        }}
-                    }}
-                }}
+            count_525 = 0
+            section_is_active = not section_state.get("isClosed", True)
 
-                // 2. حصر عناصر المقاعد الفردية المعروضة داخل خريطة SVG
-                const svgSeats = document.querySelectorAll('svg circle, svg path[data-seat], svg rect[data-seat]');
-                let availableCount = 0;
-                svgSeats.forEach(s => {{
-                    const fill = s.getAttribute('fill') || '';
-                    const style = s.getAttribute('style') || '';
-                    if (fill !== '#333333' && fill !== '#cccccc' && fill !== 'none' && !style.includes('gray')) {{
-                        availableCount++;
-                    }}
-                }});
+            # 1. القراءة عبر الـ API المقتناص
+            if seats_data_store:
+                section_525_seats = [
+                    s for s in seats_data_store 
+                    if str(s.get("section") or s.get("section_id") or s.get("sectionName") or s.get("block") or s.get("section_code") or "").strip() == TARGET_SECTION
+                    and (s.get("status") in ["AVAILABLE", "available", "FREE", 1] or s.get("isAvailable") == True)
+                ]
+                count_525 = len(section_525_seats)
 
-                return availableCount;
-            }}""", TARGET_SECTION)
+            # 2. القراءة عبر الـ DOM في حال تم فتح شبكة المقاعد التفصيلية
+            if count_525 == 0 and section_is_active:
+                count_525 = await page.evaluate("""() => {
+                    const seatElements = Array.from(document.querySelectorAll('circle, path[data-seat], rect[data-seat], g[data-seat]'));
+                    let activeSeats = 0;
+                    for (let seat of seatElements) {
+                        const fill = seat.getAttribute('fill') || '';
+                        if (fill !== '#333333' && fill !== '#cccccc' && fill !== 'none' && !seat.classList.contains('disabled')) {
+                            activeSeats++;
+                        }
+                    }
+                    return activeSeats;
+                }""")
 
-            # في حال استمرار القراءة 0، يتم فحص السجلات المقتناصة من الشبكة API
-            if count_525 == 0 and seats_data_store:
-                print("🔍 جاري التحقق النهائي في الاستجابات المستخرجة من الـ API...")
-                for item in seats_data_store:
-                    str_item = json.dumps(item)
-                    if TARGET_SECTION in str_item:
-                        # البحث عن قيم التوافر المباشرة
-                        if "available" in str_item.lower():
-                            count_525 += str_item.lower().count("available")
-
-            report = "📊 *تقرير المقاعد المتاحة:*\n\n"
+            # بناء التقرير
+            report = "📊 *تقرير حالة المربع:*\n\n"
             report += f"🎟️ *تفاصيل المربع {TARGET_SECTION} (CAT 5):*\n"
-            report += f"🔹 عدد المقاعد المتاحة: `{count_525}` مقعد.\n"
+            
+            if not section_is_active and count_525 == 0:
+                report += f"🔴 *حالة المربع:* مغلق حالياً (غير متاح للبيع / Sold Out)\n"
+                report += f"🔹 عدد المقاعد المتاحة: `0` مقعد.\n"
+            else:
+                report += f"🟢 *حالة المربع:* متاح للبيع!\n"
+                report += f"🔹 عدد المقاعد المتاحة: `{count_525}` مقعد.\n"
+
             report += f"💵 السعر: `30 ﷼`"
 
-            print(f"🎯 النتيجة النهائية للمربع {TARGET_SECTION}: {count_525} مقعد متاح.")
+            print(f"🎯 المربع {TARGET_SECTION}: {count_525} مقعد | النشاط: {section_is_active}")
 
-            # --- التقاط صورة لنتيجة الفحص وإرسالها للتليجرام ---
+            # --- التقاط صورة وإرسال التقرير للتليجرام ---
             try:
                 await page.screenshot(path="completed_screenshot.png")
-                send_telegram_photo("completed_screenshot.png", f"🏁 *حالة خريطة المقاعد عند اكتمال الفحص*\n\n{report}")
+                send_telegram_photo("completed_screenshot.png", f"🏁 *حالة الخريطة عند اكتمال الفحص*\n\n{report}")
             except Exception as img_err:
-                print(f"⚠️ تعذر التقاط صورة الفحص: {img_err}")
+                print(f"⚠️ تعذر التقاط الصورة: {img_err}")
                 send_telegram(report)
 
         except Exception as e:
-            print(f"❌ حدث خطأ غير متوقع أثناء التنفيذ: {e}")
+            print(f"❌ حدث خطأ أثناء التنفيذ: {e}")
             try:
                 await page.screenshot(path="error_screenshot.png")
-                send_telegram_photo("error_screenshot.png", f"❌ توقف السكربت عند الخطأ التالي:\n`{e}`")
+                send_telegram_photo("error_screenshot.png", f"❌ توقف السكربت عند الخطأ:\n`{e}`")
             except Exception as img_err:
-                print(f"فشل التقاط أو إرسال الصورة: {img_err}")
+                print(f"فشل إرسال الصورة: {img_err}")
         finally:
             print("🏁 إغلاق المتصفح وإنهاء السكربت.")
             await browser.close()
