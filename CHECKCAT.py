@@ -4,6 +4,7 @@ import json
 import requests
 from playwright.async_api import async_playwright
 
+# استدعاء المتغيرات من البيئة
 PHONE = os.getenv("WEBOOK_EMIL")
 PASSWORD = os.getenv("WEBOOK_PASS")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -22,7 +23,7 @@ def send_telegram(message):
     try:
         requests.post(url, json=payload, timeout=10)
     except Exception as e:
-        print(f"فشل إرسال التنبيه عبر التليجرام: {e}")
+        print(f"❌ فشل إرسال التنبيه عبر التليجرام: {e}")
 
 async def solve_turnstile_captcha(page, sitekey):
     if not CAPTCHA_API_KEY:
@@ -69,7 +70,7 @@ async def solve_turnstile_captcha(page, sitekey):
         print("⏰ انتهت مهلة حل الكابتشا.")
         return False
     except Exception as e:
-        print(f"خطأ أثناء الاتصال بـ 2Captcha: {e}")
+        print(f"❌ خطأ أثناء الاتصال بـ 2Captcha: {e}")
         return False
 
 async def handle_response(response):
@@ -102,6 +103,7 @@ async def close_cookie_banner(page):
         cookie_btn = page.locator("button:has-text('قبول الكل'), button:has-text('رفض الكل الغير ضروري')").first
         if await cookie_btn.is_visible(timeout=3000):
             await cookie_btn.click(force=True)
+            print("🍪 تم أغلاق إشعار الكوكيز.")
             await page.wait_for_timeout(1000)
     except Exception:
         pass
@@ -109,6 +111,7 @@ async def close_cookie_banner(page):
 async def run_monitor():
     global seats_data_store, detected_sitekey
     async with async_playwright() as p:
+        print("🚀 بدء تشغيل المتصفح...")
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context()
         page = await context.new_page()
@@ -116,14 +119,16 @@ async def run_monitor():
         page.on("response", handle_response)
 
         try:
-            print("الانتقال المباشر لصفحة الفعالية...")
+            print("🌐 [خطوة 1] الانتقال لصفحة الفعالية...")
             await page.goto(EVENT_URL, wait_until="networkidle")
+            print("✅ تم فتح الصفحة بنجاح.")
+            
             await close_cookie_banner(page)
 
-            # تسجيل الدخول
+            # --- تسجيل الدخول ---
             email_input = page.locator("input[type='email'], input[placeholder*='you@email.com']").first
             if await email_input.is_visible(timeout=5000):
-                print("جاري إدخال البريد الإلكتروني...")
+                print("📧 [خطوة 2] إدخال البريد الإلكتروني...")
                 await email_input.fill(str(PHONE))
                 await page.wait_for_timeout(1000)
 
@@ -135,7 +140,7 @@ async def run_monitor():
 
                 password_input = page.locator("input[type='password']").first
                 await password_input.wait_for(timeout=15000)
-                print("جاري إدخال كلمة المرور...")
+                print("🔑 [خطوة 3] إدخال كلمة المرور...")
                 await password_input.fill(str(PASSWORD))
                 await page.wait_for_timeout(1000)
 
@@ -146,20 +151,43 @@ async def run_monitor():
                     await login_btn.click(force=True)
 
                 await page.wait_for_timeout(3000)
-                print("تم تسجيل الدخول بنجاح!")
-                # 1. اختيار الفريق (مثلاً النصر)
-                page.locator("text=النصر").click()
+                print("✅ [خطوة 4] تم تسجيل الدخول بنجاح!")
 
-                # 2. تحديد مربع الصح (Checkbox)
-                checkbox = page.locator("input[type='checkbox'], [role='checkbox']")
-                if not checkbox.is_checked():
-                    checkbox.check()
+                # --- 1. اختيار الشعار/الفريق ---
+                print("⚽ [خطوة 5] جاري البحث عن بطاقة الفريق وتحديد الشعار...")
+                # التحديد باستعمال data-testid الجزئي مع fallback للبحث بالنص
+                team_logo = page.locator("[data-testid^='ui_toggle_favorite_team']").first
+                
+                if await team_logo.is_visible(timeout=5000):
+                    await team_logo.click(force=True)
+                    print("✅ تم تحديد الشعار عبر الـ data-testid بنجاح.")
+                else:
+                    print("⚠️ لم يتم إيجاد data-testid، جاري محاولة التحديد بواسطة اسم الفريق...")
+                    alt_team = page.locator("div", has_text="النصر").last
+                    await alt_team.click(force=True)
+                    print("✅ تم تحديد الفريق بواسطة النص.")
+                
+                await page.wait_for_timeout(1000)
 
-                # 3. النقر على زر التالي
-                page.locator("button:has-text('التالي'), button:has-text('اختيار التذاكر')").click()
-            # انتظار اكتشاف كابتشا Cloudflare
-            print("⏳ جاري انتظار واكتشاف كابتشا Cloudflare...")
-            for _ in range(10):
+                # --- 2. تحديد مربع أوافق (Checkbox) ---
+                print("☑️ [خطوة 6] تحديد مربع الشروط (Checkbox)...")
+                checkbox = page.locator("input[type='checkbox'], [role='checkbox']").first
+                if await checkbox.is_visible(timeout=5000):
+                    if not await checkbox.is_checked():
+                        await checkbox.check(force=True)
+                        print("✅ تم تفعيل مربع الموافقة.")
+                await page.wait_for_timeout(500)
+
+                # --- 3. النقر على زر التالي ---
+                print("➡️ [خطوة 7] النقر على زر (التالي / اختيار التذاكر)...")
+                next_btn = page.locator("button:has-text('التالي'), button:has-text('اختيار التذاكر')").first
+                await next_btn.wait_for(state="visible", timeout=5000)
+                await next_btn.click(force=True)
+                print("✅ تم التجاوز والنقر على زر التالي بنجاح.")
+
+            # --- الكابتشا تظهر فقط بعد تجاوز خطوة التالي ---
+            print("⏳ [خطوة 8] جاري فحص واكتشاف وجود كابتشا Cloudflare الآن...")
+            for _ in range(8):
                 await page.wait_for_timeout(1000)
                 if not detected_sitekey:
                     detected_sitekey = await page.evaluate("""() => {
@@ -179,21 +207,22 @@ async def run_monitor():
                     break
 
             if detected_sitekey:
-                print(f"⚠️ تم رصد الكابتشا (Sitekey: {detected_sitekey})! جاري إرسالها للحل...")
+                print(f"⚠️ [خطوة 9] تم رصد الكابتشا (Sitekey: {detected_sitekey})! جاري إرسالها للحل...")
                 solved = await solve_turnstile_captcha(page, detected_sitekey)
                 if solved:
-                    print("✅ تم تحقين التوكن بنجاح! جاري الانتظار للانتقال إلى الخريطة...")
+                    print("✅ تم حل وتحقين توكن الكابتشا بنجاح!")
             else:
-                print("ℹ️ لم تُظهر الصفحة إطار كابتشا مباشر، جاري متابعة فتح الخريطة...")
+                print("ℹ️ لم تُظهر الصفحة أي كابتشا، جاري التوجه مباشرة لخريطة المقاعد...")
 
-            print("⏳ جاري انتظار فتح خريطة المقاعد واقتناص الـ API...")
+            # --- استخراج البيانات والتنبيه ---
+            print("⏳ [خطوة 10] انتظار فتح خريطة المقاعد وقراءة الـ API...")
             await page.wait_for_timeout(10000)
 
             report = "📊 *تقرير المقاعد المتاحة (الهلال ضد الشباب):*\n\n"
             send_alert = False
 
             if seats_data_store:
-                print(f"✅ تم فتح الخريطة واستخراج {len(seats_data_store)} عنصر مقاعد عبر الـ API!")
+                print(f"✅ تم اقتناص {len(seats_data_store)} عنصر مقاعد من الـ API مباشرة!")
                 for category in TARGET_CATEGORIES:
                     available_count = len([
                         s for s in seats_data_store 
@@ -205,7 +234,7 @@ async def run_monitor():
                     if available_count > 0:
                         send_alert = True
             else:
-                print("🔍 فحص عناصر الصفحة مباشرة...")
+                print("🔍 لم يتم اقتناص API المقاعد، جاري فحص نصوص الصفحة مباشرة...")
                 page_text = await page.content()
                 for category in TARGET_CATEGORIES:
                     if category in page_text:
@@ -216,13 +245,14 @@ async def run_monitor():
 
             if send_alert:
                 send_telegram(report)
-                print("تم إرسال التقرير للتليجرام بنجاح!")
+                print("📬 تم إرسال التنبيه الفوري بالتليجرام بنجاح!")
             else:
-                print("لا توجد مقاعد متاحة للفئات المحددة حالياً.")
+                print("ℹ️ فحص مكتمل: لا توجد مقاعد متاحة حالياً للفئات المحددة.")
 
         except Exception as e:
-            print(f"حدث خطأ أثناء تنفيذ السكربت: {e}")
+            print(f"❌ حدث خطأ غير متوقع أثناء التنفيذ: {e}")
         finally:
+            print("🏁 إغلاق المتصفح وإنهاء السكربت.")
             await browser.close()
 
 if __name__ == "__main__":
