@@ -153,80 +153,59 @@ async def close_instruction_modal(page):
         pass
 
 async def click_target_section(page, section_num):
-    print(f"🎯 جاري محاولة الدخول والمشاهدة التفصيلية للمربع {section_num}...")
+    print(f"🎯 جاري البحث عن حدود وموقع المربع {section_num} بدقة في الخريطة...")
     
-    # 1. البحث بالنص
-    selectors = [
-        f"text='{section_num}'",
-        f"xpath=//*[text()='{section_num}']",
-        f"xpath=//*[name()='text' or name()='tspan'][text()='{section_num}']"
-    ]
-    
-    for sel in selectors:
-        try:
-            loc = page.locator(sel).first
-            if await loc.is_visible(timeout=2000):
-                await loc.click(force=True)
-                print(f"✅ تم النقر بواسطة المحدد: {sel}")
-                await page.wait_for_timeout(3000)
-                return True
-        except Exception:
-            pass
-
-    # 2. النقر بالنص عبر الجافاسكربت وإطلاق أحدث mouseup/mousedown
-    clicked = await page.evaluate(f"""(sec) => {{
-        const elems = Array.from(document.querySelectorAll('*'));
-        for (let el of elems) {{
-            if (el.children.length === 0 && (el.textContent || '').trim() === sec) {{
-                const target = el.closest('g') || el;
-                target.scrollIntoView({{behavior: 'instant', block: 'center'}});
-                
-                ['mousedown', 'mouseup', 'click'].forEach(evtType => {{
-                    target.dispatchEvent(new MouseEvent(evtType, {{
-                        bubbles: true,
-                        cancelable: true,
-                        view: window
-                    }}));
-                }});
-                return true;
+    # تحديد موقع المربع بالظبط بناءً على عنصر النص والـ Bounding Box الحقيقي
+    success = await page.evaluate(f"""(sec) => {{
+        // البحث في كافة نصوص SVG أو العناصر المنسقة داخل الخريطة
+        const allNodes = Array.from(document.querySelectorAll('text, tspan, g, path, [data-section]'));
+        for (let el of allNodes) {{
+            const textContent = (el.textContent || '').trim();
+            const sectionAttr = el.getAttribute('data-section') || el.getAttribute('id') || '';
+            
+            if (textContent === sec || sectionAttr.includes(sec)) {{
+                const rect = el.getBoundingClientRect();
+                if (rect.width > 0 && rect.height > 0) {{
+                    // الحصول على منتصف العنصر بدقة على الشاشة
+                    const centerX = rect.left + (rect.width / 2);
+                    const centerY = rect.top + (rect.height / 2);
+                    
+                    // تحريك الماوس للسنتر وإطلاق النقر
+                    ['mousemove', 'mousedown', 'mouseup', 'click'].forEach(evt => {{
+                        const event = new MouseEvent(evt, {{
+                            clientX: centerX,
+                            clientY: centerY,
+                            bubbles: true,
+                            cancelable: true,
+                            view: window
+                        }});
+                        el.dispatchEvent(event);
+                    }});
+                    return {{ x: centerX, y: centerY }};
+                }}
             }}
         }}
-        return false;
+        return null;
     }}""", section_num)
 
-    if clicked:
-        print("✅ تم تنفيذ إشارات الضغط على المربع عبر JavaScript.")
+    if success:
+        print(f"🎯 تم العثور على المربع {section_num} والنقر في مركزه بدقة عند ({success['x']}, {success['y']})")
+        # إجراء نقرة إضافية بمحاكاة الفيزيائية للتأكيد
+        await page.mouse.click(success['x'], success['y'])
         await page.wait_for_timeout(3000)
         return True
 
-    # 3. إذا كان الـ Canvas يغطي المربع، النقر المباشر في منطقة المربع 525 (أعلى الخريطة الوسطى)
-    try:
-        canvas = page.locator("canvas#canvas, iframe[src*='seatcloud']").first
-        if await canvas.is_visible(timeout=2000):
-            box = await canvas.bounding_box()
-            if box:
-                # المربع 525 يقع تقريباً في الجزء العلوي الأوسط من الخريطة
-                click_x = box['x'] + (box['width'] * 0.58)
-                click_y = box['y'] + (box['height'] * 0.18)
-                await page.mouse.click(click_x, click_y)
-                print(f"🎯 تم النقر التقديري على موقع المربع 525 داخل Canvas ({click_x}, {click_y})")
-                await page.wait_for_timeout(3000)
-                return True
-    except Exception as e:
-        print(f"⚠️ فشل النقر المباشر عبر الكانفاس: {e}")
-
+    print("⚠️ تعذر تحديد مركز المربع عبر SVG، جاري تجربة تحديد المربع بواسطة البحث في كائنات Seatcloud...")
     return False
 
 async def count_blue_interactive_seats(page):
     """فحص واحتساب المقاعد من شاشة العرض التفصيلية أو الـ API"""
     try:
-        # فحص وجود كلمة 'انقر للاختيار' أو بيانات الصف والمقعد
         page_text = await page.evaluate("() => document.body.innerText || ''")
         
         if "انقر للاختيار" in page_text or "انقر لـ الاختيار" in page_text or "الصف" in page_text:
             return 1
 
-        # فحص إضافي من داخل الـ Canvas / iframe
         iframe_text = await page.evaluate("""() => {
             let text = '';
             document.querySelectorAll('iframe').forEach(f => {
@@ -344,13 +323,12 @@ async def run_monitor():
             # --- إغلاق نافذة التعليمات ---
             await close_instruction_modal(page)
 
-            # --- الانتظار حتى اكتمال تحميل الخريطة العامة ---
-            print("⏳ الانتظار لاكتمال استقرار الخريطة...")
+            print("⏳ الانتظار لاكتمال تحميل عناصر الخريطة...")
             await page.wait_for_timeout(4000)
 
-            # --- الولوج والتعمق داخل المربع 525 ---
+            # --- الولوج للمربع 525 المباشر ---
             await click_target_section(page, TARGET_SECTION)
-            print("⏳ الانتظار 6 ثوانٍ لتطبيق التكبير وفتح خريطة التذاكر التفصيلية...")
+            print("⏳ الانتظار لتطبيق التكبير وفتح التذاكر التفصيلية...")
             await page.wait_for_timeout(6000)
 
             # --- فحص المقاعد المتاحة ---
@@ -358,7 +336,6 @@ async def run_monitor():
             
             blue_seats_count = await count_blue_interactive_seats(page)
 
-            # تحليل استجابات الـ API الملتقطة من seatcloud/webook
             api_seats_count = 0
             if seats_data_store:
                 for item in seats_data_store:
@@ -383,7 +360,6 @@ async def run_monitor():
 
             print(f"🎯 النتيجة المؤكدة للمربع {TARGET_SECTION}: {total_available} مقعد متاح.")
 
-            # التقاط صورة الشاشة المباشرة وإرسالها
             try:
                 await page.screenshot(path="completed_screenshot.png")
                 send_telegram_photo("completed_screenshot.png", f"🏁 *نتائج فحص المربع {TARGET_SECTION}*\n\n{report}")
