@@ -159,18 +159,36 @@ async def run_monitor():
                 # --- 1. اختيار الشعار/الفريق ---
                 print(f"⚽ [خطوة 5] جاري اختيار بطاقة فريق ({TARGET_TEAM})...")
                 
-                # استهداف زر الفريق بدمج testid الجزئي مع alt الصورة
-                team_card = page.locator(f"button[data-testid^='ui_toggle_favorite_team']:has(img[alt='{TARGET_TEAM}'])").first
-                
-                # خيار احتياطي في حال تحثيث الـ DOM للبحث بالنص داخل الزر
-                if not await team_card.is_visible(timeout=3000):
-                    team_card = page.locator(f"button[data-testid^='ui_toggle_favorite_team']:has-text('{TARGET_TEAM}')").first
+                await page.wait_for_load_state("networkidle")
+                await page.wait_for_timeout(2000)
 
-                await team_card.wait_for(state="visible", timeout=7000)
-                await team_card.click(force=True)
-                print(f"✅ تم تحديد فريق ({TARGET_TEAM}) بنجاح.")
-                
-                await page.wait_for_timeout(1000)
+                # استراتيجيات متعددة لتحديد زر الفريق
+                team_selectors = [
+                    f"button[data-testid^='ui_toggle_favorite_team']:has-text('{TARGET_TEAM}')",
+                    f"button:has(img[alt='{TARGET_TEAM}'])",
+                    f"//button[.//text()[contains(., '{TARGET_TEAM}')]]",
+                    f"text='{TARGET_TEAM}'"
+                ]
+
+                team_card = None
+                for selector in team_selectors:
+                    try:
+                        loc = page.locator(selector).last
+                        if await loc.is_visible(timeout=3000):
+                            team_card = loc
+                            print(f"🎯 تم إيجاد البطاقة باستخدام المحدد: {selector}")
+                            break
+                    except Exception:
+                        continue
+
+                if team_card:
+                    await team_card.scroll_into_view_if_needed()
+                    await team_card.click(force=True)
+                    print(f"✅ تم تحديد فريق ({TARGET_TEAM}) بنجاح.")
+                else:
+                    raise Exception(f"لم يتم العثور على بطاقة الفريق ({TARGET_TEAM}) بأي محدد!")
+
+                await page.wait_for_timeout(1500)
 
                 # --- 2. تحديد مربع أوافق (Checkbox) ---
                 print("☑️ [خطوة 6] تحديد مربع الشروط (Checkbox)...")
@@ -254,6 +272,11 @@ async def run_monitor():
 
         except Exception as e:
             print(f"❌ حدث خطأ غير متوقع أثناء التنفيذ: {e}")
+            try:
+                await page.screenshot(path="error_screenshot.png")
+                print("📸 تم حفظ صورة لمكان التوقف: error_screenshot.png")
+            except Exception:
+                pass
         finally:
             print("🏁 إغلاق المتصفح وإنهاء السكربت.")
             await browser.close()
