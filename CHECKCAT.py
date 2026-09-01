@@ -11,7 +11,7 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 CAPTCHA_API_KEY = os.getenv("CAPTCHA_API_KEY")
 
-EVENT_URL = "https://webook.com/ar/sa/jed/sports-event/events/rsl-al-ittihad-vs-al-nassr-050926/book"
+EVENT_URL = "https://webook.com/ar/SA/RUH/sports-event/events/rsl-26-27-al-shabab-vs-al-hilal-227984/book"
 TARGET_CATEGORIES = ["Premium", "Premium 2"]
 
 # اسم الفريق المطلوب تحديده ("الاتحاد" أو "النصر")
@@ -167,33 +167,40 @@ async def run_monitor():
                 await page.wait_for_timeout(4000)
                 print("✅ [خطوة 4] تم تسجيل الدخول بنجاح!")
 
-                # --- 1. اختيار الشعار/الفريق ---
+                # --- 1. اختيار الشعار/الفريق (محدّث ومباشر) ---
                 print(f"⚽ [خطوة 5] جاري اختيار بطاقة فريق ({TARGET_TEAM})...")
-                
-                # الانتظار الفعلي لظهور العنصر بالصفحة
-                target_xpath = f"//*[contains(text(), '{TARGET_TEAM}') or @alt='{TARGET_TEAM}']"
-                await page.wait_for_selector(target_xpath, timeout=10000)
+                await page.wait_for_timeout(2000)
 
-                # النقر المباشر باستخدام JS في حال كان الزر مغطى أو غير محدد
+                # النقر المباشر عبر JS على البطاقة التفاعلية واستبعاد عنوان الصفحة <title>
                 clicked = await page.evaluate(f"""(teamName) => {{
-                    const elements = Array.from(document.querySelectorAll('button, div, span, img'));
-                    for (let el of elements) {{
-                        if (el.innerText?.includes(teamName) || el.getAttribute('alt') === teamName) {{
-                            const btn = el.closest('button') || el;
-                            btn.scrollIntoView({{behavior: 'smooth', block: 'center'}});
-                            btn.click();
+                    const interactiveElements = Array.from(document.querySelectorAll('button, div[role="button"], a, div'));
+                    
+                    for (let el of interactiveElements) {{
+                        const text = el.innerText || '';
+                        const alt = el.getAttribute('alt') || '';
+                        
+                        if ((text.trim() === teamName || alt === teamName) && el.children.length < 5) {{
+                            const clickable = el.closest('button') || el;
+                            clickable.scrollIntoView({{behavior: 'instant', block: 'center'}});
+                            clickable.click();
                             return true;
                         }}
                     }}
                     return false;
                 }}""", TARGET_TEAM)
 
-                if clicked:
-                    print(f"✅ تم تحديد فريق ({TARGET_TEAM}) بنجاح عبر JS.")
-                else:
-                    raise Exception(f"لم يتم العثور على عنصر الفريق ({TARGET_TEAM})")
+                if not clicked:
+                    img_locator = page.locator(f"img[alt='{TARGET_TEAM}']").first
+                    if await img_locator.is_visible(timeout=5000):
+                        await img_locator.click(force=True)
+                        clicked = True
 
-                await page.wait_for_timeout(2000)
+                if clicked:
+                    print(f"✅ تم تحديد فريق ({TARGET_TEAM}) بنجاح.")
+                else:
+                    raise Exception(f"لم يتم العثور على بطاقة الفريق ({TARGET_TEAM})")
+
+                await page.wait_for_timeout(1500)
 
                 # --- 2. تحديد مربع أوافق (Checkbox) ---
                 print("☑️ [خطوة 6] تحديد مربع الشروط (Checkbox)...")
