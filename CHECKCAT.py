@@ -125,11 +125,8 @@ async def close_cookie_banner(page):
 async def close_instruction_modal(page):
     """إغلاق نافذة 'كيفية اختيار مقعد' باستراتيجية قوية متكررة"""
     print("💡 جاري فحص نافذة التعليمات محاولة الإغلاق...")
-    
-    # الانتظار حتى تكتمل أنيميشن الظهور
     await page.wait_for_timeout(2500)
 
-    # 1. محاولة النقر باستخدام JS على زر يحتوي كلمة "حسناً" أياً كان نوع العنصر (div, button, span)
     closed_via_js = await page.evaluate("""() => {
         const elements = Array.from(document.querySelectorAll('button, div, span, a'));
         for (let el of elements) {
@@ -147,7 +144,6 @@ async def close_instruction_modal(page):
         await page.wait_for_timeout(1000)
         return
 
-    # 2. محاولة احتياطية عبر Playwright Selector
     try:
         btn_okay = page.locator("text='حسناً'").first
         if await btn_okay.is_visible(timeout=2000):
@@ -158,19 +154,56 @@ async def close_instruction_modal(page):
     except Exception:
         pass
 
-    # 3. محاولة النقر على زر الإغلاق X أوالضغط على Escape
     try:
         await page.keyboard.press("Escape")
         print("⌨️ تم إرسال أمر Escape لإغلاق النافذة.")
     except Exception:
         pass
 
+async def change_currency_to_sar(page):
+    """تغيير العملة إلى الريال السعودي SAR في حال ظهرت بالدولار $"""
+    print("💱 جاري فحص وتحويل العملة إلى الريال السعودي (SAR)...")
+    try:
+        # البحث عن أيقونة أو زر العملة الذي يحتوي على علامة $
+        currency_btn = page.locator("button:has-text('$'), [aria-label*='currency']").first
+        if await currency_btn.is_visible(timeout=2500):
+            await currency_btn.click(force=True)
+            await page.wait_for_timeout(1000)
+
+            # النقر على خيار SAR أو ريال سعودي
+            sar_option = page.locator("text='SAR', text='SAR - الريال السعودي', text='ريال سعودي'").first
+            if await sar_option.is_visible(timeout=2000):
+                await sar_option.click(force=True)
+                print("✅ تم تغيير العملة بنجاح إلى الريال السعودي (SAR)!")
+                await page.wait_for_timeout(1000)
+            else:
+                # محاولة تحويل بواسطة JavaScript مباشرة في القائمة
+                await page.evaluate("""() => {
+                    const items = Array.from(document.querySelectorAll('button, div, li, span'));
+                    for (let item of items) {
+                        if ((item.innerText || '').includes('SAR') || (item.innerText || '').includes('ريال')) {
+                            item.click();
+                            return true;
+                        }
+                    }
+                    return false;
+                }""")
+    except Exception as e:
+        print(f"ℹ️ تجاوز تغيير العملة تلقائياً: {e}")
+
 async def run_monitor():
     global seats_data_store, detected_sitekey
     async with async_playwright() as p:
         print("🚀 بدء تشغيل المتصفح...")
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context()
+        
+        # ضبط المنطقة واللغة السعودية لتجنب إظهار الدولار افتراضياً
+        context = await browser.new_context(
+            locale="ar-SA",
+            timezone_id="Asia/Riyadh",
+            geolocation={"latitude": 24.7136, "longitude": 46.6753},
+            permissions=["geolocation"]
+        )
         page = await context.new_page()
 
         page.on("response", handle_response)
@@ -288,9 +321,13 @@ async def run_monitor():
             else:
                 print("ℹ️ لم تُظهر الصفحة أي كابتشا، جاري التوجه مباشرة لخريطة المقاعد...")
 
-            # --- إغلاق نافذة التعليمات (مع الانتظار لضمان ظهور النافذة كلياً) ---
+            # --- إغلاق نافذة التعليمات ---
             print("💡 [خطوة 9.5] جاري فحص وإغلاق نافذة التعليمات ('كيفية اختيار مقعد')...")
             await close_instruction_modal(page)
+
+            # --- تغيير العملة إلى الريال السعودي ---
+            print("💱 [خطوة 9.6] تغيير العملة إلى الريال السعودي (SAR)...")
+            await change_currency_to_sar(page)
 
             # --- استخراج البيانات والتنبيه ---
             print("⏳ [خطوة 10] انتظار فتح خريطة المقاعد وقراءة الـ API...")
