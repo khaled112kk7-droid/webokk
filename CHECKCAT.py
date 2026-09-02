@@ -152,7 +152,7 @@ async def close_instruction_modal(page):
     except Exception:
         pass
 
-# --- البحث عن المربع 525 بدقة بدلاً من النقر العشوائي ---
+# --- البحث عن المربع 525 بالتحديد والنقر عليه ---
 async def click_target_section(page, section_num):
     print(f"🎯 البحث المباشر عن المربع {section_num} داخل الـ iframe...")
     await page.wait_for_timeout(3000)
@@ -168,32 +168,25 @@ async def click_target_section(page, section_num):
     if frame:
         print("✅ تم العثور على إطار الخريطة الداخلي (iframe)!")
         
-        # المحاولة الأولى: تحديد القطاع مباشرة عبر مكتبة الخريطة (SeatsJS API)
-        clicked_via_api = await frame.evaluate(f"""(secNum) => {{
-            if (window.chart && typeof window.chart.selectSection === 'function') {{
-                window.chart.selectSection(secNum);
-                return true;
-            }}
-            if (window.seatsio && window.seatsio.chart) {{
-                window.seatsio.chart.zoomToSection(secNum);
-                return true;
-            }}
-            return false;
-        }}""", section_num)
+        # 1. المحاولة الأولى: البحث عن عنصر نصي يحمل رقم المربع 525 والنقر عليه
+        try:
+            section_element = frame.locator(f"text='{section_num}'").first
+            if await section_element.is_visible(timeout=3000):
+                print(f"🖱️ تم العثور على النص '{section_num}'، جاري النقر عليه مباشرة...")
+                await section_element.click(force=True)
+                await page.wait_for_timeout(3000)
+                return True
+        except Exception:
+            pass
 
-        if clicked_via_api:
-            print(f"✅ تم التكبير على المربع {section_num} برمجياً عبر API الخريطة!")
-            await page.wait_for_timeout(3000)
-            return True
-
-        # المحاولة الثانية: استخدام إحداثيات المربع 525 المحددة بدقة على الخريطة
+        # 2. المحاولة الثانية: استخدام الإحداثيات الدقيقة للمربع 525 على خريطة الـ Canvas
         canvas = frame.locator("canvas#canvas").first
         if await canvas.is_visible(timeout=5000):
             box = await canvas.bounding_box()
             if box:
-                # إحداثيات المربع 525 (العلوي) على الخريطة
-                click_x = box['x'] + (box['width'] * 0.50)
-                click_y = box['y'] + (box['height'] * 0.38)
+                # إحداثيات موقع المربع 525 (الجهة العلوية الوسطى)
+                click_x = box['x'] + (box['width'] * 0.423)
+                click_y = box['y'] + (box['height'] * 0.70)
 
                 print(f"🖱️ النقر داخل الـ iframe على إحداثيات المربع {section_num}: ({click_x}, {click_y})")
                 await page.mouse.click(click_x, click_y)
@@ -202,8 +195,8 @@ async def click_target_section(page, section_num):
                 await page.wait_for_timeout(4000)
                 return True
 
-    print("⚠️ لم يتم العثور على الـ iframe بشكل مباشر، جاري محاولة النقر الاحتياطي...")
-    await page.mouse.click(640, 300)
+    print("⚠️ تجربة النقر الاحتياطي المباشر على موقع المربع 525...")
+    await page.mouse.click(541, 560)
     await page.wait_for_timeout(3000)
     return True
 
