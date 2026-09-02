@@ -4,6 +4,7 @@ import asyncio
 import json
 import requests
 from PIL import Image
+import pytesseract
 from playwright.async_api import async_playwright
 
 # استدعاء المتغيرات من البيئة (GitHub Secrets)
@@ -13,19 +14,14 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 CAPTCHA_API_KEY = os.getenv("CAPTCHA_API_KEY")
 
-EVENT_URL = "https://webook.com/ar/sa/jed/sports-event/events/rsl-al-ittihad-vs-al-nassr-050926/book"
+EVENT_URL = "https://webook.com/ar/SA/RUH/sports-event/events/rsl-26-27-al-shabab-vs-al-hilal-227984/book"
 TARGET_TEAM = "الاتحاد"
 
-# قائمة المربعات المطلوبة للفحص وإحداثياتها
-TARGET_SECTIONS = {
-    "525": {"x_min": 0.62, "x_max": 0.66, "y_min": 0.18, "y_max": 0.22},
-    "323": {"x_min": 0.62, "x_max": 0.66, "y_min": 0.23, "y_max": 0.27},
-    "322": {"x_min": 0.66, "x_max": 0.70, "y_min": 0.23, "y_max": 0.27}
-}
+# المربعات المطلوب فحص محيطها
+TARGET_NUMBERS = ["525", "323", "322"]
 
-# اللون الرمادي الذي يدل على نفاذ التذاكر ورقم السماحية
-SOLD_OUT_COLOR = (30, 30, 30)
-COLOR_THRESHOLD = 8
+# اللون المحدد حصراً للنفاد
+EXACT_SOLD_OUT_COLOR = (30, 30, 30)
 
 seats_data_store = []
 detected_sitekey = None
@@ -172,13 +168,9 @@ async def close_instruction_modal(page):
     except Exception:
         pass
 
-# --- دالة الفحص البصري لمنطق RGB(30, 30, 30) ---
+# --- دالة الفحص البصري بدون إحداثيات (البحث بمحيط الرقم عن RGB(30, 30, 30) فقط) ---
 async def check_sold_out_status(page):
-    """
-    التقاط الخريطة وفحص المربعات المحددة.
-    إذا طغى اللون الرمادي RGB(30,30,30) على المربع يُعتبر نفذت تذاكره.
-    """
-    print("🔍 جاري التحقق البصري من لون المربعات (البحث عن RGB 30,30,30)...")
+    print("🔍 جاري قراءة الخريطة بصرياً وفحص محيط أرقام المربعات عن اللون RGB(30, 30, 30)...")
     await page.wait_for_timeout(3000)
 
     frame = page.frame(name="seats-iframe") or page.frame(url=lambda u: "seatcloud" in u or "seats" in u)
@@ -197,39 +189,42 @@ async def check_sold_out_status(page):
 
     screenshot_bytes = await canvas_elem.screenshot()
     img = Image.open(io.BytesIO(screenshot_bytes)).convert('RGB')
-    width, height = img.size
 
+    # قراءة أماكن النصوص والأرقام من الخريطة عبر pytesseract
+    ocr_data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
     results = {}
 
-    for sec_name, bounds in TARGET_SECTIONS.items():
-        x_min = int(width * bounds["x_min"])
-        x_max = int(width * bounds["x_max"])
-        y_min = int(height * bounds["y_min"])
-        y_max = int(height * bounds["y_max"])
+    for num in TARGET_NUMBERS:
+        found = False
+        exact_grey_pixels = 0
 
-        sold_out_pixels = 0
-        total_pixels = (x_max - x_min) * (y_max - y_min)
+        for i in range(len(ocr_data['text'])):
+            text = ocr_data['text'][i].strip()
+            if text == num:
+                found = True
+                x, y, w, h = ocr_data['left'][i], ocr_data['top'][i], ocr_data['width'][i], ocr_data['height'][i]
 
-        for x in range(x_min, x_max):
-            for y in range(y_min, y_max):
-                r, g, b = img.getpixel((x, y))
+                # تحديد محيط رقم المربع (هامش 15 بكسل)
+                x_min = max(0, x - 15)
+                x_max = min(img.width, x + w + 15)
+                y_min = max(0, y - 15)
+                y_max = min(img.height, y + h + 15)
 
-                # فحص مدى قرب البكسل من الرمادي الداكن (30, 30, 30)
-                if (abs(r - SOLD_OUT_COLOR[0]) <= COLOR_THRESHOLD and
-                    abs(g - SOLD_OUT_COLOR[1]) <= COLOR_THRESHOLD and
-                    abs(b - SOLD_OUT_COLOR[2]) <= COLOR_THRESHOLD):
-                    sold_out_pixels += 1
+                # البحث فقط وحصراً عن اللون EXACT_SOLD_OUT_COLOR
+                for px in range(x_min, x_max):
+                    for py in range(y_min, y_max):
+                        if img.getpixel((px, py)) == EXACT_SOLD_OUT_COLOR:
+                            exact_grey_pixels += 1
+                break
 
-        # يعتبر المربع نفذت إذا كانت نسبة بكسلات الرمادي الداكن فيه عالية
-        is_sold_out = (sold_out_pixels / total_pixels) > 0.50 if total_pixels > 0 else False
-        
-        results[sec_name] = {
-            "sold_out": is_sold_out,
-            "grey_pixels": sold_out_pixels
-        }
-        
-        status_text = "❌ نفذت (رمادي)" if is_sold_out else "🟢 ملون / متاح! 🎉"
-        print(f"📊 المربع {sec_name}: {status_text} (بكسلات الرمادي الداكن: {sold_out_pixels}/{total_pixels})")
+        if found:
+            is_sold_out = exact_grey_pixels > 5
+            results[num] = {"sold_out": is_sold_out, "grey_pixels": exact_grey_pixels}
+            status_text = "❌ نفذت (وجد لون 30,30,30)" if is_sold_out else "🟢 متاح"
+            print(f"📊 المربع {num}: {status_text} (بكسلات RGB(34,34,34): {exact_grey_pixels})")
+        else:
+            print(f"⚠️ لم يتم تحديد موقع الرقم {num} في الصورة تلقائياً.")
+            results[num] = {"sold_out": False, "grey_pixels": 0}
 
     return results
 
@@ -306,7 +301,7 @@ async def run_monitor():
                     if await next_btn.is_visible(timeout=3000):
                         await next_btn.click(force=True)
 
-            # --- الكابتشا ---
+            # --- حل الكابتشا ---
             for _ in range(8):
                 await page.wait_for_timeout(1000)
                 if not detected_sitekey:
@@ -326,7 +321,7 @@ async def run_monitor():
                     break
 
             if detected_sitekey:
-                print(f"⚠️ تم رصد الكابتشا! جاري الحل...")
+                print("⚠️ تم رصد الكابتشا! جاري الحل...")
                 await solve_turnstile_captcha(page, detected_sitekey)
 
             # --- إغلاق نافذة التعليمات ---
@@ -335,7 +330,6 @@ async def run_monitor():
             print("⏳ الانتظار لاكتمال تحميل الخريطة...")
             await page.wait_for_timeout(4000)
 
-            # --- حفظ لقطة الشاشة وفحص المربعات الثلاثة بصرياً ---
             await page.screenshot(path="completed_screenshot.png")
             
             sections_status = await check_sold_out_status(page)
