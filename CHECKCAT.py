@@ -15,6 +15,7 @@ EVENT_URL = "https://webook.com/ar/sa/jed/sports-event/events/rsl-al-ittihad-vs-
 
 TARGET_TEAM = "الاتحاد"
 TARGET_SECTION = "525"
+TARGET_CATEGORY = "CAT 5"
 
 seats_data_store = []
 detected_sitekey = None
@@ -161,9 +162,9 @@ async def close_instruction_modal(page):
     except Exception:
         pass
 
-# --- التركيز المباشر والتكبير على المربع 525 بالأبعاد الدقيقة ---
-async def click_target_section(page, section_num):
-    print(f"🎯 جاري التوجه وتكبير الخريطة على موقع المربع {section_num}...")
+# --- تحديد المربع 525 المضمون عبر الفئة CAT 5 واسم المربع ---
+async def click_target_section(page, section_num, category_name):
+    print(f"🎯 جاري التوجه وتحديد المربع {section_num} عبر الفئة {category_name}...")
     await page.wait_for_timeout(3000)
     
     frame = page.frame(name="seats-iframe") or page.frame(url=lambda u: "seatcloud" in u)
@@ -173,37 +174,46 @@ async def click_target_section(page, section_num):
                 frame = f
                 break
 
-    target_page_or_frame = frame if frame else page
+    target_frame = frame if frame else page
 
-    try:
-        canvas = target_page_or_frame.locator("canvas#canvas").first
-        if await canvas.is_visible(timeout=5000):
-            box = await canvas.bounding_box()
-            if box:
-                # حساب الموقع الصحيح للمربع 525 (في المدرج العلوي المنتصف قريباً من الأعلى)
-                target_x = box['x'] + (box['width'] * 0.612)
-                target_y = box['y'] + (box['height'] * 0.335)
+    # 1. المحاولة الأولى: تحديد الفئة أو المربع عبر API الخريطة الداخلي
+    api_success = await target_frame.evaluate(f"""([sec, cat]) => {{
+        try {{
+            const c = window.chart || (window.seatsio && window.seatsio.chart);
+            if (c) {{
+                if (typeof c.zoomToCategory === 'function') {{ c.zoomToCategory(cat); return 'zoomToCategory'; }}
+                if (typeof c.selectCategory === 'function') {{ c.selectCategory(cat); return 'selectCategory'; }}
+                if (typeof c.zoomToSection === 'function') {{ c.zoomToSection(sec); return 'zoomToSection'; }}
+                if (typeof c.selectSection === 'function') {{ c.selectSection(sec); return 'selectSection'; }}
+            }}
+        }} catch(e) {{}}
+        return false;
+    }}""", [section_num, category_name])
 
-                print(f"🖱️ النقر المباشر على مركز المربع {section_num}: ({target_x}, {target_y})")
-                
-                # 1. نقل الماوس فوق المربع
-                await page.mouse.move(target_x, target_y)
-                await page.wait_for_timeout(500)
-                
-                # 2. نقرة مزدوجة للنفاذ لداخل المربع
-                await page.mouse.dblclick(target_x, target_y)
-                await page.wait_for_timeout(1000)
-                
-                # 3. عمل Zoom in إضافي باستخدام الماوس للتأكد من توسيع المقاعد
-                await page.mouse.wheel(0, -300)
-                await page.wait_for_timeout(1000)
-                await page.mouse.click(target_x, target_y)
-                await page.wait_for_timeout(4000)
-                
-                print(f"🔍 تم التكبير والتركيز بنجاح على المربع {section_num}!")
-                return True
-    except Exception as e:
-        print(f"⚠️ خطأ أثناء محاولة التكبير على المربع: {e}")
+    if api_success:
+        print(f"✅ تم التكبير المباشر على {category_name} / {section_num} عبر API الخريطة ({api_success})!")
+        await page.wait_for_timeout(4000)
+        return True
+
+    # 2. المحاولة الثانية: النقر المباشر على الشارة العلوية (Badge) الخاصة بـ CAT 5 أو 30 SAR
+    badge_clicked = await page.evaluate(f"""([sec, cat]) => {{
+        const elements = Array.from(document.querySelectorAll('*'));
+        for (let el of elements) {{
+            const txt = (el.textContent || el.innerText || '').trim();
+            if (txt.includes(cat) || txt.includes(sec) || (txt.includes('30') && txt.includes('CA'))) {{
+                el.scrollIntoView({{behavior: 'instant', block: 'center'}});
+                el.dispatchEvent(new MouseEvent('click', {{bubbles: true, cancelable: true, view: window}}));
+                if (typeof el.click === 'function') el.click();
+                return true;
+            }}
+        }}
+        return false;
+    }}""", [section_num, category_name])
+
+    if badge_clicked:
+        print(f"✅ تم النقر على شارة الفئة/المربع ({category_name}) من القائمة العلوية بنجاح!")
+        await page.wait_for_timeout(4000)
+        return True
 
     return False
 
@@ -344,8 +354,8 @@ async def run_monitor():
             print("⏳ الانتظار لاكتمال تحميل عناصر الخريطة...")
             await page.wait_for_timeout(4000)
 
-            # --- الولوج للمربع 525 المباشر ---
-            await click_target_section(page, TARGET_SECTION)
+            # --- الولوج للمربع 525 عبر الفئة CAT 5 ---
+            await click_target_section(page, TARGET_SECTION, TARGET_CATEGORY)
             print("⏳ الانتظار لتطبيق التكبير وفتح التذاكر التفصيلية...")
             await page.wait_for_timeout(5000)
 
@@ -366,7 +376,7 @@ async def run_monitor():
             total_available = max(blue_seats_count, api_seats_count)
 
             report = "📊 *تقرير المقاعد المتاحة بالمعاينة المباشرة:*\n\n"
-            report += f"🎟️ *المربع:* `{TARGET_SECTION}`\n"
+            report += f"🎟️ *المربع:* `{TARGET_SECTION}` ({TARGET_CATEGORY})\n"
             
             if total_available > 0:
                 report += f"🟢 *الحالة:* تم التقاط درجة اللون المتاحة `rgb(59, 63, 98)` في الخريطة! 🎉\n"
