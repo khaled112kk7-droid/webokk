@@ -152,9 +152,9 @@ async def close_instruction_modal(page):
     except Exception:
         pass
 
-# --- البحث عن المربع 525 والتكبير عليه داخل الـ iframe ---
+# --- البحث عن المربع 525 بدقة بدلاً من النقر العشوائي ---
 async def click_target_section(page, section_num):
-    print(f"🎯 البحث عن المربع {section_num} داخل الـ iframe والنقر عليه...")
+    print(f"🎯 البحث المباشر عن المربع {section_num} داخل الـ iframe...")
     await page.wait_for_timeout(3000)
     
     frame = page.frame(name="seats-iframe") or page.frame(url=lambda u: "seatcloud" in u)
@@ -167,13 +167,33 @@ async def click_target_section(page, section_num):
 
     if frame:
         print("✅ تم العثور على إطار الخريطة الداخلي (iframe)!")
+        
+        # المحاولة الأولى: تحديد القطاع مباشرة عبر مكتبة الخريطة (SeatsJS API)
+        clicked_via_api = await frame.evaluate(f"""(secNum) => {{
+            if (window.chart && typeof window.chart.selectSection === 'function') {{
+                window.chart.selectSection(secNum);
+                return true;
+            }}
+            if (window.seatsio && window.seatsio.chart) {{
+                window.seatsio.chart.zoomToSection(secNum);
+                return true;
+            }}
+            return false;
+        }}""", section_num)
+
+        if clicked_via_api:
+            print(f"✅ تم التكبير على المربع {section_num} برمجياً عبر API الخريطة!")
+            await page.wait_for_timeout(3000)
+            return True
+
+        # المحاولة الثانية: استخدام إحداثيات المربع 525 المحددة بدقة على الخريطة
         canvas = frame.locator("canvas#canvas").first
         if await canvas.is_visible(timeout=5000):
             box = await canvas.bounding_box()
             if box:
-                # إحداثيات موقع المربع 525 داخل الخريطة
-                click_x = box['x'] + (box['width'] * 0.52)
-                click_y = box['y'] + (box['height'] * 0.18)
+                # إحداثيات المربع 525 (العلوي) على الخريطة
+                click_x = box['x'] + (box['width'] * 0.50)
+                click_y = box['y'] + (box['height'] * 0.38)
 
                 print(f"🖱️ النقر داخل الـ iframe على إحداثيات المربع {section_num}: ({click_x}, {click_y})")
                 await page.mouse.click(click_x, click_y)
@@ -182,8 +202,8 @@ async def click_target_section(page, section_num):
                 await page.wait_for_timeout(4000)
                 return True
 
-    print("⚠️ تجربة النقر الاحتياطي المباشر...")
-    await page.mouse.click(800, 220)
+    print("⚠️ لم يتم العثور على الـ iframe بشكل مباشر، جاري محاولة النقر الاحتياطي...")
+    await page.mouse.click(640, 300)
     await page.wait_for_timeout(3000)
     return True
 
@@ -338,7 +358,7 @@ async def run_monitor():
             if seats_data_store:
                 for item in seats_data_store:
                     raw_str = json.dumps(item.get("data", {}))
-                    if "525" in raw_str and ("AVAILABLE" in raw_str or "available" in raw_str or "free" in raw_str):
+                    if TARGET_SECTION in raw_str and ("AVAILABLE" in raw_str or "available" in raw_str or "free" in raw_str):
                         count = raw_str.count("AVAILABLE") + raw_str.count('"status":"available"')
                         if count > api_seats_count:
                             api_seats_count = count
@@ -346,12 +366,12 @@ async def run_monitor():
             total_available = max(blue_seats_count, api_seats_count)
 
             report = "📊 *تقرير المقاعد المتاحة بالمعاينة المباشرة:*\n\n"
-            report += f"🎟️ *المربع:* `{TARGET_SECTION}` (CAT 5)\n"
+            report += f"🎟️ *المربع:* `{TARGET_SECTION}`\n"
             
             if total_available > 0:
                 report += f"🟢 *الحالة:* تم التقاط درجة اللون المتاحة `rgb(59, 63, 98)` في الخريطة! 🎉\n"
             else:
-                report += f"🔴 *الحالة:* لم يتم التقاط مقاعد بدرجة اللون المحددة في الوقت الحالي.\n"
+                report += f"🔴 *الحالة:* لم يتم التقاط مقاعد بدرجة اللون المحدد في الوقت الحالي.\n"
 
             report += f"💵 *السعر:* `30 ﷼`"
 
