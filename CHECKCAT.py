@@ -1,7 +1,9 @@
 import os
+import io
 import asyncio
 import json
 import requests
+from PIL import Image
 from playwright.async_api import async_playwright
 
 # استدعاء المتغيرات من البيئة (GitHub Secrets)
@@ -44,7 +46,7 @@ def send_telegram_photo(photo_path, caption="📸 صورة من السكربت")
             import time
             time.sleep(2)
     
-    print("❌ فشل إرسال الصورة بعد عدة محاولات، جاري إرسال التقرير كنص...")
+    print("❌ فشل إرسال الصورة بعد عدة محاولات، جاري إرسال التتقرير كنص...")
     send_telegram(caption)
     return False
 
@@ -162,95 +164,63 @@ async def close_instruction_modal(page):
     except Exception:
         pass
 
-# --- تحديد المربع 525 المضمون عبر الفئة CAT 5 واسم المربع ---
-async def click_target_section(page, section_num, category_name):
-    print(f"🎯 جاري التوجه وتحديد المربع {section_num} عبر الفئة {category_name}...")
+# --- دالة الفحص البصري الدقيق لمحيط المربع 525 ---
+async def check_section_525_availability(page):
+    """
+    فحص توفر المقاعد في المربع 525 بصرياً عبر مسح محيط المربع
+    للبحث عن أي علامات أو نقاط باللون الأزرق أو السماوي المضيء
+    """
+    print("🔍 جاري التحقق البصري الدقيق من محيط المربع 525...")
     await page.wait_for_timeout(3000)
-    
-    frame = page.frame(name="seats-iframe") or page.frame(url=lambda u: "seatcloud" in u)
+
+    # 1. العثور على الـ iframe الخاص بالخريطة
+    frame = page.frame(name="seats-iframe") or page.frame(url=lambda u: "seatcloud" in u or "seats" in u)
     if not frame:
         for f in page.frames:
-            if "seatcloud" in f.url or "chart" in f.url:
+            if "seatcloud" in f.url or "index.html" in f.url:
                 frame = f
                 break
 
-    target_frame = frame if frame else page
+    target = frame if frame else page
 
-    # 1. المحاولة الأولى: تحديد الفئة أو المربع عبر API الخريطة الداخلي
-    api_success = await target_frame.evaluate(f"""([sec, cat]) => {{
-        try {{
-            const c = window.chart || (window.seatsio && window.seatsio.chart);
-            if (c) {{
-                if (typeof c.zoomToCategory === 'function') {{ c.zoomToCategory(cat); return 'zoomToCategory'; }}
-                if (typeof c.selectCategory === 'function') {{ c.selectCategory(cat); return 'selectCategory'; }}
-                if (typeof c.zoomToSection === 'function') {{ c.zoomToSection(sec); return 'zoomToSection'; }}
-                if (typeof c.selectSection === 'function') {{ c.selectSection(sec); return 'selectSection'; }}
-            }}
-        }} catch(e) {{}}
-        return false;
-    }}""", [section_num, category_name])
+    # 2. التقاط لقطة شاشة لعنصر Canvas الخريطة
+    canvas_elem = await target.query_selector('canvas#canvas, canvas')
+    if not canvas_elem:
+        print("⚠️ لم يتم العثور على عنصر Canvas داخل الخريطة.")
+        return False, 0
 
-    if api_success:
-        print(f"✅ تم التكبير المباشر على {category_name} / {section_num} عبر API الخريطة ({api_success})!")
-        await page.wait_for_timeout(4000)
-        return True
+    screenshot_bytes = await canvas_elem.screenshot()
+    img = Image.open(io.BytesIO(screenshot_bytes))
+    width, height = img.size
 
-    # 2. المحاولة الثانية: النقر المباشر على الشارة العلوية (Badge) الخاصة بـ CAT 5 أو 30 SAR
-    badge_clicked = await page.evaluate(f"""([sec, cat]) => {{
-        const elements = Array.from(document.querySelectorAll('*'));
-        for (let el of elements) {{
-            const txt = (el.textContent || el.innerText || '').trim();
-            if (txt.includes(cat) || txt.includes(sec) || (txt.includes('30') && txt.includes('CA'))) {{
-                el.scrollIntoView({{behavior: 'instant', block: 'center'}});
-                el.dispatchEvent(new MouseEvent('click', {{bubbles: true, cancelable: true, view: window}}));
-                if (typeof el.click === 'function') el.click();
-                return true;
-            }}
-        }}
-        return false;
-    }}""", [section_num, category_name])
+    # 3. تحديد نطاق المربع 525 (أعلى الخريطة: X من 63% إلى 68% | Y من 16% إلى 21%)
+    x_min = int(width * 0.63)
+    x_max = int(width * 0.68)
+    y_min = int(height * 0.16)
+    y_max = int(height * 0.21)
 
-    if badge_clicked:
-        print(f"✅ تم النقر على شارة الفئة/المربع ({category_name}) من القائمة العلوية بنجاح!")
-        await page.wait_for_timeout(4000)
-        return True
+    blue_pixel_count = 0
 
-    return False
+    # 4. مسح البكسلات بداخل المربع للبحث عن علامات/نقاط الأزرق أو السماوي
+    for x in range(x_min, x_max):
+        for y in range(y_min, y_max):
+            r, g, b = img.getpixel((x, y))[:3]
 
-# --- البحث عن التذاكر المتاحة بصفة خاصة لدرجة اللون rgb(59, 63, 98) ---
-async def count_blue_interactive_seats(page):
-    """فحص خريطة المقاعد بالألوان والبحث خصيصاً عن اللون المتاح rgb(59, 63, 98)"""
-    print("🎨 جاري فحص ألوان المقاعد على الشاشة لدرجة اللون rgb(59, 63, 98)...")
-    try:
-        has_target_color = await page.evaluate("""() => {
-            const iframe = document.querySelector('#seats-iframe') || document.querySelector('iframe');
-            if (!iframe) return false;
-            try {
-                const canvas = iframe.contentWindow.document.querySelector('canvas#canvas');
-                if (!canvas) return false;
-                const ctx = canvas.getContext('2d');
-                if (!ctx) return false;
-                const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-                
-                for (let i = 0; i < imgData.length; i += 4) {
-                    const r = imgData[i];
-                    const g = imgData[i+1];
-                    const b = imgData[i+2];
-                    
-                    // المطابقة لدرجة اللون الخاصة بالمقاعد المتاحة rgb(59, 63, 98)
-                    if (Math.abs(r - 59) <= 10 && Math.abs(g - 63) <= 10 && Math.abs(b - 98) <= 10) {
-                        return true;
-                    }
-                }
-            } catch(e) {}
-            return false;
-        }""")
-        if has_target_color:
-            return 1
-    except Exception as e:
-        print(f"⚠️ تنبيه أثناء فحص ألوان المقاعد: {e}")
+            # شرط اللون الأزرق / السماوي للتذاكر المتاحة
+            is_cyan_or_blue = (b > r + 30 and b > 80) or (b > 100 and g > 90 and r < 100)
+            
+            if is_cyan_or_blue:
+                blue_pixel_count += 1
 
-    return 0
+    print(f"📊 عدد بكسلات الأزرق/السماوي المكتشفة في منطقة المربع 525: {blue_pixel_count}")
+
+    # إذا تم اكتشاف أي علامات زرقاء/سماوية (أكثر من 15 بكسل) يعتبر المربع متاحاً
+    if blue_pixel_count > 15:
+        print("🟢 نتيجة الفحص: تم العثور على تذاكر متاحـة داخل المربع 525! 🎉")
+        return True, blue_pixel_count
+    else:
+        print("🔴 نتيجة الفحص: المربع 525 غير متاح (لا توجد علامات زرقاء/سماوية).")
+        return False, blue_pixel_count
 
 async def run_monitor():
     global seats_data_store, detected_sitekey
@@ -351,45 +321,25 @@ async def run_monitor():
             # --- إغلاق نافذة التعليمات ---
             await close_instruction_modal(page)
 
-            print("⏳ الانتظار لاكتمال تحميل عناصر الخريطة...")
+            print("⏳ الانتظار لاكتمال تحميل الخريطة...")
             await page.wait_for_timeout(4000)
 
-            # --- الولوج للمربع 525 عبر الفئة CAT 5 ---
-            await click_target_section(page, TARGET_SECTION, TARGET_CATEGORY)
-            print("⏳ الانتظار لتطبيق التكبير وفتح التذاكر التفصيلية...")
-            await page.wait_for_timeout(5000)
+            # --- الفحص البصري المباشر لمحيط المربع 525 ---
+            is_available, blue_count = await check_section_525_availability(page)
 
-            # --- فحص المقاعد المتاحة ---
-            print("🔍 جاري فحص واحتساب التذاكر والمقاعد الشاغرة...")
+            report = "📊 *تقرير فحص المربع عبر المعاينة البصرية:*\n\n"
+            report += f"🎟️ *المربع المطلوب:* `{TARGET_SECTION}` ({TARGET_CATEGORY})\n"
             
-            blue_seats_count = await count_blue_interactive_seats(page)
-
-            api_seats_count = 0
-            if seats_data_store:
-                for item in seats_data_store:
-                    raw_str = json.dumps(item.get("data", {}))
-                    if TARGET_SECTION in raw_str and ("AVAILABLE" in raw_str or "available" in raw_str or "free" in raw_str):
-                        count = raw_str.count("AVAILABLE") + raw_str.count('"status":"available"')
-                        if count > api_seats_count:
-                            api_seats_count = count
-
-            total_available = max(blue_seats_count, api_seats_count)
-
-            report = "📊 *تقرير المقاعد المتاحة بالمعاينة المباشرة:*\n\n"
-            report += f"🎟️ *المربع:* `{TARGET_SECTION}` ({TARGET_CATEGORY})\n"
-            
-            if total_available > 0:
-                report += f"🟢 *الحالة:* تم التقاط درجة اللون المتاحة `rgb(59, 63, 98)` في الخريطة! 🎉\n"
+            if is_available:
+                report += f"🟢 *الحالة:* **متااااح!** (تم التقاط {blue_count} بكسل باللون الأزرق/السماوي في المربع 525) 🎉\n"
             else:
-                report += f"🔴 *الحالة:* لم يتم التقاط مقاعد بدرجة اللون المحدد في الوقت الحالي.\n"
+                report += f"🔴 *الحالة:* غير متاح حالياً (لا توجد علامات زرقاء في منطقة المربع).\n"
 
             report += f"💵 *السعر:* `30 ﷼`"
 
-            print(f"🎯 النتيجة المؤكدة للمربع {TARGET_SECTION}: {total_available} مقعد متاح.")
-
             try:
                 await page.screenshot(path="completed_screenshot.png")
-                send_telegram_photo("completed_screenshot.png", f"🏁 *نتائج فحص المربع {TARGET_SECTION}*\n\n{report}")
+                send_telegram_photo("completed_screenshot.png", f"🏁 *نتيجة مراقبة المربع {TARGET_SECTION}*\n\n{report}")
             except Exception as img_err:
                 print(f"⚠️ تعذر التقاط الصورة: {img_err}")
                 send_telegram(report)
