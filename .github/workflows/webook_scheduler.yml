@@ -1,4 +1,4 @@
-name: Webook Monitor
+name: Webook check
 
 on:
   schedule:
