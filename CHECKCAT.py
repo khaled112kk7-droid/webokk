@@ -21,7 +21,7 @@ TARGET_TEAM = "الاتحاد"
 TARGET_NUMBERS = ["525", "323", "322"]
 
 # اللون المحدد حصراً للنفاد
-EXACT_SOLD_OUT_COLOR = (30, 30, 30)
+EXACT_SOLD_OUT_COLOR = (34, 34, 34)
 
 seats_data_store = []
 detected_sitekey = None
@@ -334,7 +334,7 @@ async def run_monitor():
             
             sections_status = await check_sold_out_status(page)
 
-            report = "📊 *تقرير فحص حالة المربعات (RGB 30,30,30):*\n\n"
+            report = "📊 *تقرير فحص حالة المربعات (RGB 34,34,34):*\n\n"
             any_available = False
 
             for sec, status in sections_status.items():
