@@ -1,10 +1,8 @@
 import os
 import io
 import asyncio
-import json
 import requests
 from PIL import Image
-import pytesseract
 from playwright.async_api import async_playwright
 
 # استدعاء المتغيرات من البيئة (GitHub Secrets)
@@ -14,14 +12,12 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 CAPTCHA_API_KEY = os.getenv("CAPTCHA_API_KEY")
 
+# الرابط الجديد للفعالية
 EVENT_URL = "https://webook.com/ar/sa/jed/sports-event/events/rsl-al-ittihad-vs-al-nassr-050926/book"
 TARGET_TEAM = "الاتحاد"
 
-# المربعات المطلوب فحص محيطها
-TARGET_NUMBERS = ["525", "323", "322"]
-
 # اللون المحدد حصراً للنفاد
-EXACT_SOLD_OUT_COLOR = (34, 34, 34)
+EXACT_SOLD_OUT_COLOR = (30, 30, 30)
 
 seats_data_store = []
 detected_sitekey = None
@@ -168,9 +164,9 @@ async def close_instruction_modal(page):
     except Exception:
         pass
 
-# --- دالة الفحص البصري بدون إحداثيات (البحث بمحيط الرقم عن RGB(30, 30, 30) فقط) ---
+# --- دالة الفحص البصري بالمسح الشامل بدون إحداثيات ---
 async def check_sold_out_status(page):
-    print("🔍 جاري قراءة الخريطة بصرياً وفحص محيط أرقام المربعات عن اللون RGB(30, 30, 30)...")
+    print("🔍 جاري مسح الخريطة بالكامل للبحث عن اللون RGB(30, 30, 30)...")
     await page.wait_for_timeout(3000)
 
     frame = page.frame(name="seats-iframe") or page.frame(url=lambda u: "seatcloud" in u or "seats" in u)
@@ -189,43 +185,25 @@ async def check_sold_out_status(page):
 
     screenshot_bytes = await canvas_elem.screenshot()
     img = Image.open(io.BytesIO(screenshot_bytes)).convert('RGB')
+    width, height = img.size
 
-    # قراءة أماكن النصوص والأرقام من الخريطة عبر pytesseract
-    ocr_data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
+    exact_grey_pixels = 0
+
+    # مسح البكسلات في خريطة Canvas كاملة للتعرف على اللون 30,30,30
+    for x in range(0, width, 2):
+        for y in range(0, height, 2):
+            if img.getpixel((x, y)) == EXACT_SOLD_OUT_COLOR:
+                exact_grey_pixels += 1
+
     results = {}
+    if exact_grey_pixels > 50:
+        print(f"🚨 تم اكتشاف اللون (30,30,30) في الخريطة! عدد البكسلات: {exact_grey_pixels}")
+        results["SOLD_OUT_DETECTED"] = True
+    else:
+        print(f"🟢 لم يتم رصد اللون (30,30,30). عدد البكسلات: {exact_grey_pixels}")
+        results["SOLD_OUT_DETECTED"] = False
 
-    for num in TARGET_NUMBERS:
-        found = False
-        exact_grey_pixels = 0
-
-        for i in range(len(ocr_data['text'])):
-            text = ocr_data['text'][i].strip()
-            if text == num:
-                found = True
-                x, y, w, h = ocr_data['left'][i], ocr_data['top'][i], ocr_data['width'][i], ocr_data['height'][i]
-
-                # تحديد محيط رقم المربع (هامش 15 بكسل)
-                x_min = max(0, x - 15)
-                x_max = min(img.width, x + w + 15)
-                y_min = max(0, y - 15)
-                y_max = min(img.height, y + h + 15)
-
-                # البحث فقط وحصراً عن اللون EXACT_SOLD_OUT_COLOR
-                for px in range(x_min, x_max):
-                    for py in range(y_min, y_max):
-                        if img.getpixel((px, py)) == EXACT_SOLD_OUT_COLOR:
-                            exact_grey_pixels += 1
-                break
-
-        if found:
-            is_sold_out = exact_grey_pixels > 5
-            results[num] = {"sold_out": is_sold_out, "grey_pixels": exact_grey_pixels}
-            status_text = "❌ نفذت (وجد لون 30,30,30)" if is_sold_out else "🟢 متاح"
-            print(f"📊 المربع {num}: {status_text} (بكسلات RGB(34,34,34): {exact_grey_pixels})")
-        else:
-            print(f"⚠️ لم يتم تحديد موقع الرقم {num} في الصورة تلقائياً.")
-            results[num] = {"sold_out": False, "grey_pixels": 0}
-
+    results["GREY_PIXELS_COUNT"] = exact_grey_pixels
     return results
 
 async def run_monitor():
@@ -332,22 +310,14 @@ async def run_monitor():
 
             await page.screenshot(path="completed_screenshot.png")
             
-            sections_status = await check_sold_out_status(page)
+            scan_results = await check_sold_out_status(page)
 
-            report = "📊 *تقرير فحص حالة المربعات (RGB 34,34,34):*\n\n"
-            any_available = False
+            if scan_results.get("SOLD_OUT_DETECTED"):
+                report = f"🔴 *تم رصد بكسلات اللون الرمادي RGB(30, 30, 30)* في الخريطة!\nإجمالي البكسلات المكتشفة: `{scan_results.get('GREY_PIXELS_COUNT')}`"
+            else:
+                report = f"🟢 *لم يتم رصد اللون RGB(30, 30, 30)* في الخريطة.\nإجمالي البكسلات المكتشفة: `{scan_results.get('GREY_PIXELS_COUNT')}`"
 
-            for sec, status in sections_status.items():
-                if status["sold_out"]:
-                    report += f"🔴 *المربع `{sec}`:* نفذت التذاكر (رمادي مغلق).\n"
-                else:
-                    report += f"🟢 *المربع `{sec}`:* **ملون ومتاح!** 🎉\n"
-                    any_available = True
-
-            if any_available:
-                report = "🔔 *تنبيه توفر تذاكر!*\n\n" + report
-
-            send_telegram_photo("completed_screenshot.png", f"🏁 *نتيجة فحص الخريطة*\n\n{report}")
+            send_telegram_photo("completed_screenshot.png", f"🏁 *نتيجة مسح الخريطة*\n\n{report}")
 
         except Exception as e:
             print(f"❌ حدث خطأ أثناء التنفيذ: {e}")
