@@ -46,7 +46,7 @@ def send_telegram_photo(photo_path, caption="📸 صورة من السكربت")
             import time
             time.sleep(2)
     
-    print("❌ فشل إرسال الصورة بعد عدة محاولات، جاري إرسال التتقرير كنص...")
+    print("❌ فشل إرسال الصورة بعد عدة محاولات، جاري إرسال التقرير كنص...")
     send_telegram(caption)
     return False
 
@@ -164,13 +164,13 @@ async def close_instruction_modal(page):
     except Exception:
         pass
 
-# --- دالة الفحص البصري الدقيق لمحيط المربع 525 ---
+# --- دالة الفحص البصري المحدثة للمربع 525 ---
 async def check_section_525_availability(page):
     """
-    فحص توفر المقاعد في المربع 525 بصرياً عبر مسح محيط المربع
-    للبحث عن أي علامات أو نقاط باللون الأزرق أو السماوي المضيء
+    فحص توفر المقاعد في المربع 525 بصرياً عبر مطابقة درجة اللون
+    مع الإحداثيات المحددة للمربع في أعلى الخريطة
     """
-    print("🔍 جاري التحقق البصري الدقيق من محيط المربع 525...")
+    print("🔍 جاري التحقق البصري الدقيق من المربع 525...")
     await page.wait_for_timeout(3000)
 
     # 1. العثور على الـ iframe الخاص بالخريطة
@@ -193,33 +193,31 @@ async def check_section_525_availability(page):
     img = Image.open(io.BytesIO(screenshot_bytes))
     width, height = img.size
 
-    # 3. تحديد نطاق المربع 525 (أعلى الخريطة: X من 63% إلى 68% | Y من 16% إلى 21%)
-    x_min = int(width * 0.63)
-    x_max = int(width * 0.68)
-    y_min = int(height * 0.16)
-    y_max = int(height * 0.21)
+    # 3. إحداثيات المربع 525 الصحيحة (X: 62% إلى 66% | Y: 18% إلى 22%)
+    x_min = int(width * 0.62)
+    x_max = int(width * 0.66)
+    y_min = int(height * 0.18)
+    y_max = int(height * 0.22)
 
     blue_pixel_count = 0
 
-    # 4. مسح البكسلات بداخل المربع للبحث عن علامات/نقاط الأزرق أو السماوي
+    # 4. فحص درجة الأزرق بداخل المربع
     for x in range(x_min, x_max):
         for y in range(y_min, y_max):
             r, g, b = img.getpixel((x, y))[:3]
 
-            # شرط اللون الأزرق / السماوي للتذاكر المتاحة
-            is_cyan_or_blue = (b > r + 30 and b > 80) or (b > 100 and g > 90 and r < 100)
+            is_blue = (b > 100 and b > r + 15) or (b > 85 and g > 85 and r < 80)
             
-            if is_cyan_or_blue:
+            if is_blue:
                 blue_pixel_count += 1
 
-    print(f"📊 عدد بكسلات الأزرق/السماوي المكتشفة في منطقة المربع 525: {blue_pixel_count}")
+    print(f"📊 عدد بكسلات الأزرق المكتشفة بداخل المربع 525: {blue_pixel_count}")
 
-    # إذا تم اكتشاف أي علامات زرقاء/سماوية (أكثر من 15 بكسل) يعتبر المربع متاحاً
-    if blue_pixel_count > 15:
-        print("🟢 نتيجة الفحص: تم العثور على تذاكر متاحـة داخل المربع 525! 🎉")
+    if blue_pixel_count > 20:
+        print("🟢 نتيجة الفحص: تم العثور على المربع 525 متاح ولونه أزرق! 🎉")
         return True, blue_pixel_count
     else:
-        print("🔴 نتيجة الفحص: المربع 525 غير متاح (لا توجد علامات زرقاء/سماوية).")
+        print("🔴 نتيجة الفحص: المربع 525 غير متاح (لونه رمادي).")
         return False, blue_pixel_count
 
 async def run_monitor():
@@ -331,11 +329,9 @@ async def run_monitor():
             report += f"🎟️ *المربع المطلوب:* `{TARGET_SECTION}` ({TARGET_CATEGORY})\n"
             
             if is_available:
-                report += f"🟢 *الحالة:* **متااااح!** (تم التقاط {blue_count} بكسل باللون الأزرق/السماوي في المربع 525) 🎉\n"
+                report += f"🟢 *الحالة:* **متااااح!** (تم رصد اللون الأزرق في المربع 525) 🎉\n"
             else:
                 report += f"🔴 *الحالة:* غير متاح حالياً (لا توجد علامات زرقاء في منطقة المربع).\n"
-
-            report += f"💵 *السعر:* `30 ﷼`"
 
             try:
                 await page.screenshot(path="completed_screenshot.png")
