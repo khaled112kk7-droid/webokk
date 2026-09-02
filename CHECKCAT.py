@@ -10,8 +10,7 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 CAPTCHA_API_KEY = os.getenv("CAPTCHA_API_KEY")
 
-EVENT_URL = "https://webook.com/ar/sa/jed/sports-event/events/rsl-al-ittihad-vs-al-nassr-050926/book"
-TARGET_TEAM = "الاتحاد"
+https://webook.com/ar/sa/jed/sports-event/events/rsl-al-ittihad-vs-al-nassr-050926/bookTARGET_TEAM = "الاتحاد"
 TARGET_SECTION = "525"
 
 detected_sitekey = None
@@ -77,6 +76,7 @@ async def close_cookie_and_modal(page):
     except Exception:
         pass
 
+# --- النقر المخصص على المربع 525 داخل الـ iframe ---
 async def click_section_inside_iframe(page):
     print("🎯 جاري البحث عن الخريطة داخل iframe وسحب العنصر...")
     await page.wait_for_timeout(3000)
@@ -95,6 +95,7 @@ async def click_section_inside_iframe(page):
         if await canvas.is_visible(timeout=5000):
             box = await canvas.bounding_box()
             if box:
+                # إحداثيات المربع 525 في الخريطة
                 click_x = box['x'] + (box['width'] * 0.52)
                 click_y = box['y'] + (box['height'] * 0.18)
 
@@ -110,6 +111,7 @@ async def click_section_inside_iframe(page):
     await page.wait_for_timeout(3000)
     return True
 
+# --- فحص ألوان المقاعد بالأرقام المحددة rgb(59, 63, 98) ---
 async def inspect_blue_pixels(page):
     """فحص خريطة المقاعد بالألوان والبحث خصيصاً عن اللون المتاح rgb(59, 63, 98)"""
     print("🎨 جاري فحص ألوان المقاعد على الشاشة لدرجة اللون rgb(59, 63, 98)...")
@@ -128,7 +130,7 @@ async def inspect_blue_pixels(page):
                 const g = imgData[i+1];
                 const b = imgData[i+2];
                 
-                // مطابقة درجة اللون الخاصة بالتذاكر المتاحة rgb(59, 63, 98)
+                // المطابقة لدرجة اللون الخاصة بالمقاعد المتاحة rgb(59, 63, 98)
                 if (Math.abs(r - 59) <= 10 && Math.abs(g - 63) <= 10 && Math.abs(b - 98) <= 10) {
                     return true;
                 }
@@ -150,7 +152,7 @@ async def run_monitor():
             await page.goto(EVENT_URL, wait_until="networkidle")
             await close_cookie_and_modal(page)
 
-            # --- تسجيل الدخول ---
+            # --- تسجيل الدخول الخاص بك والمجرب سابقاً ---
             email_input = page.locator("input[type='email']").first
             if await email_input.is_visible(timeout=4000):
                 print("📧 [2] إدخال البريد الإلكتروني...")
@@ -164,7 +166,7 @@ async def run_monitor():
                 await password_input.press("Enter")
                 await page.wait_for_timeout(4000)
 
-                # --- اختيار الفريق ---
+                # --- اختيار الفريق كما كان في كودك الناجح ---
                 print(f"⚽ [4] اختيار فريق {TARGET_TEAM}...")
                 await page.evaluate(f"""(team) => {{
                     const els = Array.from(document.querySelectorAll('button, div, a'));
@@ -184,10 +186,10 @@ async def run_monitor():
             await close_cookie_and_modal(page)
             await page.wait_for_timeout(3000)
 
-            # --- النقر على المربع 525 داخل الـ iframe ---
+            # --- 1. النقر على المربع 525 داخل الـ iframe ---
             await click_section_inside_iframe(page)
 
-            # --- فحص الألوان للمقاعد المتاحة ---
+            # --- 2. فحص ألوان المقاعد المتاحة بالدرجة rgb(59, 63, 98) ---
             is_seats_available = await inspect_blue_pixels(page)
 
             report = f"📊 *نتائج فحص المربع {TARGET_SECTION}*\n\n"
