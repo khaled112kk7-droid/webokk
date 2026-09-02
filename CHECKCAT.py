@@ -12,6 +12,7 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 CAPTCHA_API_KEY = os.getenv("CAPTCHA_API_KEY")
 
 EVENT_URL = "https://webook.com/ar/sa/jed/sports-event/events/rsl-al-ittihad-vs-al-nassr-050926/book"
+
 TARGET_TEAM = "الاتحاد"
 TARGET_SECTION = "525"
 
@@ -151,9 +152,9 @@ async def close_instruction_modal(page):
     except Exception:
         pass
 
-# --- البحث عن المربع 525 بالتحديد والنقر عليه ---
+# --- تحديد المربع 525 مضموناً بالنص أو عبر API الخريطة بدون إحداثيات ---
 async def click_target_section(page, section_num):
-    print(f"🎯 البحث المباشر عن المربع {section_num} داخل الـ iframe...")
+    print(f"🎯 جاري البحث عن المربع {section_num} برمجياً وبالنص لتحديده بشكل مضمون...")
     await page.wait_for_timeout(3000)
     
     frame = page.frame(name="seats-iframe") or page.frame(url=lambda u: "seatcloud" in u)
@@ -164,38 +165,53 @@ async def click_target_section(page, section_num):
                 frame = f
                 break
 
-    if frame:
-        print("✅ تم العثور على إطار الخريطة الداخلي (iframe)!")
-        
-        # 1. المحاولة الأولى: البحث عن عنصر نصي يحمل رقم المربع 525 والنقر عليه
-        try:
-            section_element = frame.locator(f"text='{section_num}'").first
-            if await section_element.is_visible(timeout=3000):
-                print(f"🖱️ تم العثور على النص '{section_num}'، جاري النقر عليه مباشرة...")
-                await section_element.click(force=True)
-                await page.wait_for_timeout(3000)
-                return True
-        except Exception:
-            pass
+    target_frame = frame if frame else page
 
-        # 2. المحاولة الثانية: استخدام الإحداثيات الدقيقة للمربع 525 على خريطة الـ Canvas
-        canvas = frame.locator("canvas#canvas").first
-        if await canvas.is_visible(timeout=5000):
-            box = await canvas.bounding_box()
-            if box:
-                # إحداثيات موقع المربع 525 (الجهة العلوية الوسطى)
-                click_x = box['x'] + (box['width'] * 0.423)
-                click_y = box['y'] + (box['height'] * 0.70)
+    # 1. المحاولة الأولى: تحديد المربع برمجياً من خلال كائناتSeats.io / SeatCloud API
+    api_success = await target_frame.evaluate(f"""(sec) => {{
+        try {{
+            if (window.chart) {{
+                if (typeof window.chart.selectSection === 'function') {{ window.chart.selectSection(sec); return 'chart.selectSection'; }}
+                if (typeof window.chart.zoomToSection === 'function') {{ window.chart.zoomToSection(sec); return 'chart.zoomToSection'; }}
+                if (typeof window.chart.zoomToCategory === 'function') {{ window.chart.zoomToCategory(sec); return 'chart.zoomToCategory'; }}
+            }}
+            if (window.seatsio && window.seatsio.chart) {{
+                if (typeof window.seatsio.chart.selectSection === 'function') {{ window.seatsio.chart.selectSection(sec); return 'seatsio.selectSection'; }}
+                if (typeof window.seatsio.chart.zoomToSection === 'function') {{ window.seatsio.chart.zoomToSection(sec); return 'seatsio.zoomToSection'; }}
+            }}
+        }} catch(e) {{}}
+        return false;
+    }}""", section_num)
 
-                print(f"🖱️ النقر داخل الـ iframe على إحداثيات المربع {section_num}: ({click_x}, {click_y})")
-                await page.mouse.click(click_x, click_y)
-                await page.wait_for_timeout(1000)
-                await page.mouse.click(click_x, click_y)
-                await page.wait_for_timeout(4000)
-                return True
+    if api_success:
+        print(f"✅ تم النقر والتكبير على المربع {section_num} برمجياً عبر API الخريطة ({api_success})!")
+        await page.wait_for_timeout(4000)
+        return True
 
-    print("⚠️ تجربة النقر الاحتياطي المباشر على موقع المربع 525...")
-    await page.mouse.click(541, 560)
+    # 2. المحاولة الثانية: البحث عن عنصر الـ DOM / SVG المباشر الذي يحتوي على النص 525 والنقر عليه
+    dom_success = await target_frame.evaluate(f"""(sec) => {{
+        // البحث عن العناصر النصية أو الأشكال المسجلة باسم المربع
+        const allElements = Array.from(document.querySelectorAll('*'));
+        for (let el of allElements) {{
+            const text = (el.textContent || el.innerText || '').trim();
+            const dataSec = el.getAttribute('data-section') || el.getAttribute('data-key') || el.getAttribute('id') || '';
+            
+            if (text === sec || dataSec === sec) {{
+                el.scrollIntoView({{behavior: 'instant', block: 'center'}});
+                el.dispatchEvent(new MouseEvent('click', {{bubbles: true, cancelable: true, view: window}}));
+                if (typeof el.click === 'function') el.click();
+                return true;
+            }}
+        }}
+        return false;
+    }}""", section_num)
+
+    if dom_success:
+        print(f"✅ تم العثور على عنصر المربع {section_num} بالنص داخل الـ DOM والنقر عليه مباشرة!")
+        await page.wait_for_timeout(4000)
+        return True
+
+    print("⚠️ تعذر العثور على عنصر نصي مباشر أو API للمربع، جاري الانتظار لتحديث الخريطة...")
     await page.wait_for_timeout(3000)
     return True
 
@@ -336,7 +352,7 @@ async def run_monitor():
             print("⏳ الانتظار لاكتمال تحميل عناصر الخريطة...")
             await page.wait_for_timeout(4000)
 
-            # --- الولوج للمربع 525 المباشر ---
+            # --- الولوج للمربع 525 المباشر بالنص/API ---
             await click_target_section(page, TARGET_SECTION)
             print("⏳ الانتظار لتطبيق التكبير وفتح التذاكر التفصيلية...")
             await page.wait_for_timeout(6000)
