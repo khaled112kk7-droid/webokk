@@ -29,14 +29,23 @@ def send_telegram(message):
 
 def send_telegram_photo(photo_path, caption="📸 صورة من السكربت"):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
-    try:
-        with open(photo_path, "rb") as photo:
-            payload = {"chat_id": TELEGRAM_CHAT_ID, "caption": caption}
-            files = {"photo": photo}
-            requests.post(url, data=payload, files=files, timeout=15)
-            print("📬 تم إرسال الصورة إلى التليجرام بنجاح!")
-    except Exception as e:
-        print(f"❌ فشل إرسال الصورة عبر التليجرام: {e}")
+    for attempt in range(3):
+        try:
+            with open(photo_path, "rb") as photo:
+                payload = {"chat_id": TELEGRAM_CHAT_ID, "caption": caption}
+                files = {"photo": photo}
+                res = requests.post(url, data=payload, files=files, timeout=30)
+                if res.status_code == 200:
+                    print("📬 تم إرسال الصورة إلى التليجرام بنجاح!")
+                    return True
+        except Exception as e:
+            print(f"⚠️ محاولة ({attempt + 1}/3) فشلت لإرسال الصورة: {e}")
+            import time
+            time.sleep(2)
+    
+    print("❌ فشل إرسال الصورة بعد عدة محاولات، جاري إرسال التقرير كنص...")
+    send_telegram(caption)
+    return False
 
 async def solve_turnstile_captcha(page, sitekey):
     if not CAPTCHA_API_KEY:
@@ -152,68 +161,51 @@ async def close_instruction_modal(page):
     except Exception:
         pass
 
-# --- تحديد المربع 525 مضموناً بالنص أو عبر API الخريطة بدون إحداثيات ---
+# --- التركيز المباشر والتكبير على المربع 525 بالأبعاد الدقيقة ---
 async def click_target_section(page, section_num):
-    print(f"🎯 جاري البحث عن المربع {section_num} برمجياً وبالنص لتحديده بشكل مضمون...")
+    print(f"🎯 جاري التوجه وتكبير الخريطة على موقع المربع {section_num}...")
     await page.wait_for_timeout(3000)
     
     frame = page.frame(name="seats-iframe") or page.frame(url=lambda u: "seatcloud" in u)
-    
     if not frame:
         for f in page.frames:
             if "seatcloud" in f.url or "chart" in f.url:
                 frame = f
                 break
 
-    target_frame = frame if frame else page
+    target_page_or_frame = frame if frame else page
 
-    # 1. المحاولة الأولى: تحديد المربع برمجياً من خلال كائناتSeats.io / SeatCloud API
-    api_success = await target_frame.evaluate(f"""(sec) => {{
-        try {{
-            if (window.chart) {{
-                if (typeof window.chart.selectSection === 'function') {{ window.chart.selectSection(sec); return 'chart.selectSection'; }}
-                if (typeof window.chart.zoomToSection === 'function') {{ window.chart.zoomToSection(sec); return 'chart.zoomToSection'; }}
-                if (typeof window.chart.zoomToCategory === 'function') {{ window.chart.zoomToCategory(sec); return 'chart.zoomToCategory'; }}
-            }}
-            if (window.seatsio && window.seatsio.chart) {{
-                if (typeof window.seatsio.chart.selectSection === 'function') {{ window.seatsio.chart.selectSection(sec); return 'seatsio.selectSection'; }}
-                if (typeof window.seatsio.chart.zoomToSection === 'function') {{ window.seatsio.chart.zoomToSection(sec); return 'seatsio.zoomToSection'; }}
-            }}
-        }} catch(e) {{}}
-        return false;
-    }}""", section_num)
+    try:
+        canvas = target_page_or_frame.locator("canvas#canvas").first
+        if await canvas.is_visible(timeout=5000):
+            box = await canvas.bounding_box()
+            if box:
+                # حساب الموقع الصحيح للمربع 525 (في المدرج العلوي المنتصف قريباً من الأعلى)
+                target_x = box['x'] + (box['width'] * 0.612)
+                target_y = box['y'] + (box['height'] * 0.335)
 
-    if api_success:
-        print(f"✅ تم النقر والتكبير على المربع {section_num} برمجياً عبر API الخريطة ({api_success})!")
-        await page.wait_for_timeout(4000)
-        return True
+                print(f"🖱️ النقر المباشر على مركز المربع {section_num}: ({target_x}, {target_y})")
+                
+                # 1. نقل الماوس فوق المربع
+                await page.mouse.move(target_x, target_y)
+                await page.wait_for_timeout(500)
+                
+                # 2. نقرة مزدوجة للنفاذ لداخل المربع
+                await page.mouse.dblclick(target_x, target_y)
+                await page.wait_for_timeout(1000)
+                
+                # 3. عمل Zoom in إضافي باستخدام الماوس للتأكد من توسيع المقاعد
+                await page.mouse.wheel(0, -300)
+                await page.wait_for_timeout(1000)
+                await page.mouse.click(target_x, target_y)
+                await page.wait_for_timeout(4000)
+                
+                print(f"🔍 تم التكبير والتركيز بنجاح على المربع {section_num}!")
+                return True
+    except Exception as e:
+        print(f"⚠️ خطأ أثناء محاولة التكبير على المربع: {e}")
 
-    # 2. المحاولة الثانية: البحث عن عنصر الـ DOM / SVG المباشر الذي يحتوي على النص 525 والنقر عليه
-    dom_success = await target_frame.evaluate(f"""(sec) => {{
-        // البحث عن العناصر النصية أو الأشكال المسجلة باسم المربع
-        const allElements = Array.from(document.querySelectorAll('*'));
-        for (let el of allElements) {{
-            const text = (el.textContent || el.innerText || '').trim();
-            const dataSec = el.getAttribute('data-section') || el.getAttribute('data-key') || el.getAttribute('id') || '';
-            
-            if (text === sec || dataSec === sec) {{
-                el.scrollIntoView({{behavior: 'instant', block: 'center'}});
-                el.dispatchEvent(new MouseEvent('click', {{bubbles: true, cancelable: true, view: window}}));
-                if (typeof el.click === 'function') el.click();
-                return true;
-            }}
-        }}
-        return false;
-    }}""", section_num)
-
-    if dom_success:
-        print(f"✅ تم العثور على عنصر المربع {section_num} بالنص داخل الـ DOM والنقر عليه مباشرة!")
-        await page.wait_for_timeout(4000)
-        return True
-
-    print("⚠️ تعذر العثور على عنصر نصي مباشر أو API للمربع، جاري الانتظار لتحديث الخريطة...")
-    await page.wait_for_timeout(3000)
-    return True
+    return False
 
 # --- البحث عن التذاكر المتاحة بصفة خاصة لدرجة اللون rgb(59, 63, 98) ---
 async def count_blue_interactive_seats(page):
@@ -352,10 +344,10 @@ async def run_monitor():
             print("⏳ الانتظار لاكتمال تحميل عناصر الخريطة...")
             await page.wait_for_timeout(4000)
 
-            # --- الولوج للمربع 525 المباشر بالنص/API ---
+            # --- الولوج للمربع 525 المباشر ---
             await click_target_section(page, TARGET_SECTION)
             print("⏳ الانتظار لتطبيق التكبير وفتح التذاكر التفصيلية...")
-            await page.wait_for_timeout(6000)
+            await page.wait_for_timeout(5000)
 
             # --- فحص المقاعد المتاحة ---
             print("🔍 جاري فحص واحتساب التذاكر والمقاعد الشاغرة...")
