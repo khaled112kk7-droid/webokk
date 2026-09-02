@@ -3,6 +3,7 @@ import io
 import asyncio
 import json
 import requests
+import colorsys
 from PIL import Image
 from playwright.async_api import async_playwright
 
@@ -17,7 +18,7 @@ EVENT_URL = "https://webook.com/ar/sa/jed/sports-event/events/rsl-al-ittihad-vs-
 
 TARGET_TEAM = "الاتحاد"
 
-# قائمة المربعات المطلوبة للفحص
+# قائمة المربعات المطلوبة للفحص وإحداثياتها
 TARGET_SECTIONS = {
     "525": {"x_min": 0.62, "x_max": 0.66, "y_min": 0.18, "y_max": 0.22},
     "323": {"x_min": 0.62, "x_max": 0.66, "y_min": 0.23, "y_max": 0.27},
@@ -169,13 +170,13 @@ async def close_instruction_modal(page):
     except Exception:
         pass
 
-# --- دالة الفحص البصري للمربعات الثلاثة (525, 322, 323) ---
+# --- دالة الفحص الدقيق المستندة إلى نسبة التشبّع والألوان الصريحة ---
 async def check_multiple_sections(page):
     """
-    التقاط الخريطة وفحص نطاق المربعات 525، 322، و323
-    لتحديد ما إذا كانت باللون الرمادي المغلق أم ممتلئة بألوان ملونة (متاحة).
+    التقاط الخريطة وفحص نطاق المربعات 525، 322، و323 عبر تصفية الرمادي
+    والتأكد من وجود ألوان حقيقية زاهية (أزرق، وردي، سماوي، أصفر).
     """
-    print("🔍 جاري التقاط الصفحة والفحص البصري للمربعات 525 و 322 و 323...")
+    print("🔍 جاري التحقق البصري الدقيق وتصفية ألوان الرمادي...")
     await page.wait_for_timeout(3000)
 
     frame = page.frame(name="seats-iframe") or page.frame(url=lambda u: "seatcloud" in u or "seats" in u)
@@ -204,27 +205,33 @@ async def check_multiple_sections(page):
         y_min = int(height * bounds["y_min"])
         y_max = int(height * bounds["y_max"])
 
-        color_pixel_count = 0
+        valid_color_pixels = 0
 
         for x in range(x_min, x_max):
             for y in range(y_min, y_max):
                 r, g, b = img.getpixel((x, y))[:3]
 
-                # الرمادي المغلق تكون فيه الألوان منخفضة ومتقاربة جداً (R ≈ G ≈ B < 80)
-                # أي بكسل يحتوي على ألوان صريحة (أزرق، وردي، سماوي، أصفر، إلخ) يعتبر لون متاح
-                is_colored = not (abs(r - g) < 15 and abs(g - b) < 15 and r < 85)
+                # تحويل RGB إلى HSV لحساب نسبة التشبع (Saturation) والسطوع (Value)
+                h, s, v = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
 
-                if is_colored:
-                    color_pixel_count += 1
+                # شرط الاستبعاد الصارم للون الرمادي والأسود والخلفية الداكنة:
+                # 1. استبعاد الألوان التي يقل تشبعها عن 25% (S < 0.25) كالمحيط الرمادي والنصوص البيضاء
+                # 2. استبعاد الدرجات الداكنة جداً والرمادية (RGB المتقاربة والقليلة)
+                # 3. قبول البكسل فقط إذا كان لونه زاهياً وبدرجة سطوع جيدة (S > 0.3 و V > 0.35)
+                is_real_color = (s > 0.30) and (v > 0.35)
 
-        is_active = color_pixel_count > 20
+                if is_real_color:
+                    valid_color_pixels += 1
+
+        # اشتراط وجود أكثر من 30 بكسل ملون حقيقي لتأكيد توفر المربع
+        is_active = valid_color_pixels > 30
         results[sec_name] = {
             "active": is_active,
-            "color_pixels": color_pixel_count
+            "color_pixels": valid_color_pixels
         }
         
         status_text = "ملون (متاح) 🎉" if is_active else "رمادي مغلق ❌"
-        print(f"📊 المربع {sec_name}: {status_text} (بكسلات ملونة: {color_pixel_count})")
+        print(f"📊 المربع {sec_name}: {status_text} (بكسلات ملونة حقيقية: {valid_color_pixels})")
 
     return results
 
