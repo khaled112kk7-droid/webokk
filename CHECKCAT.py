@@ -16,8 +16,13 @@ CAPTCHA_API_KEY = os.getenv("CAPTCHA_API_KEY")
 EVENT_URL = "https://webook.com/ar/sa/jed/sports-event/events/rsl-al-ittihad-vs-al-nassr-050926/book"
 
 TARGET_TEAM = "الاتحاد"
-TARGET_SECTION = "525"
-TARGET_CATEGORY = "CAT 5"
+
+# قائمة المربعات المطلوبة للفحص
+TARGET_SECTIONS = {
+    "525": {"x_min": 0.62, "x_max": 0.66, "y_min": 0.18, "y_max": 0.22},
+    "323": {"x_min": 0.62, "x_max": 0.66, "y_min": 0.23, "y_max": 0.27},
+    "322": {"x_min": 0.66, "x_max": 0.70, "y_min": 0.23, "y_max": 0.27}
+}
 
 seats_data_store = []
 detected_sitekey = None
@@ -164,16 +169,15 @@ async def close_instruction_modal(page):
     except Exception:
         pass
 
-# --- دالة الفحص البصري المحدثة للمربع 525 ---
-async def check_section_525_availability(page):
+# --- دالة الفحص البصري للمربعات الثلاثة (525, 322, 323) ---
+async def check_multiple_sections(page):
     """
-    فحص توفر المقاعد في المربع 525 بصرياً عبر مطابقة درجة اللون
-    مع الإحداثيات المحددة للمربع في أعلى الخريطة
+    التقاط الخريطة وفحص نطاق المربعات 525، 322، و323
+    لتحديد ما إذا كانت باللون الرمادي المغلق أم ممتلئة بألوان ملونة (متاحة).
     """
-    print("🔍 جاري التحقق البصري الدقيق من المربع 525...")
+    print("🔍 جاري التقاط الصفحة والفحص البصري للمربعات 525 و 322 و 323...")
     await page.wait_for_timeout(3000)
 
-    # 1. العثور على الـ iframe الخاص بالخريطة
     frame = page.frame(name="seats-iframe") or page.frame(url=lambda u: "seatcloud" in u or "seats" in u)
     if not frame:
         for f in page.frames:
@@ -183,42 +187,46 @@ async def check_section_525_availability(page):
 
     target = frame if frame else page
 
-    # 2. التقاط لقطة شاشة لعنصر Canvas الخريطة
     canvas_elem = await target.query_selector('canvas#canvas, canvas')
     if not canvas_elem:
         print("⚠️ لم يتم العثور على عنصر Canvas داخل الخريطة.")
-        return False, 0
+        return {}
 
     screenshot_bytes = await canvas_elem.screenshot()
     img = Image.open(io.BytesIO(screenshot_bytes))
     width, height = img.size
 
-    # 3. إحداثيات المربع 525 الصحيحة (X: 62% إلى 66% | Y: 18% إلى 22%)
-    x_min = int(width * 0.62)
-    x_max = int(width * 0.66)
-    y_min = int(height * 0.18)
-    y_max = int(height * 0.22)
+    results = {}
 
-    blue_pixel_count = 0
+    for sec_name, bounds in TARGET_SECTIONS.items():
+        x_min = int(width * bounds["x_min"])
+        x_max = int(width * bounds["x_max"])
+        y_min = int(height * bounds["y_min"])
+        y_max = int(height * bounds["y_max"])
 
-    # 4. فحص درجة الأزرق بداخل المربع
-    for x in range(x_min, x_max):
-        for y in range(y_min, y_max):
-            r, g, b = img.getpixel((x, y))[:3]
+        color_pixel_count = 0
 
-            is_blue = (b > 100 and b > r + 15) or (b > 85 and g > 85 and r < 80)
-            
-            if is_blue:
-                blue_pixel_count += 1
+        for x in range(x_min, x_max):
+            for y in range(y_min, y_max):
+                r, g, b = img.getpixel((x, y))[:3]
 
-    print(f"📊 عدد بكسلات الأزرق المكتشفة بداخل المربع 525: {blue_pixel_count}")
+                # الرمادي المغلق تكون فيه الألوان منخفضة ومتقاربة جداً (R ≈ G ≈ B < 80)
+                # أي بكسل يحتوي على ألوان صريحة (أزرق، وردي، سماوي، أصفر، إلخ) يعتبر لون متاح
+                is_colored = not (abs(r - g) < 15 and abs(g - b) < 15 and r < 85)
 
-    if blue_pixel_count > 20:
-        print("🟢 نتيجة الفحص: تم العثور على المربع 525 متاح ولونه أزرق! 🎉")
-        return True, blue_pixel_count
-    else:
-        print("🔴 نتيجة الفحص: المربع 525 غير متاح (لونه رمادي).")
-        return False, blue_pixel_count
+                if is_colored:
+                    color_pixel_count += 1
+
+        is_active = color_pixel_count > 20
+        results[sec_name] = {
+            "active": is_active,
+            "color_pixels": color_pixel_count
+        }
+        
+        status_text = "ملون (متاح) 🎉" if is_active else "رمادي مغلق ❌"
+        print(f"📊 المربع {sec_name}: {status_text} (بكسلات ملونة: {color_pixel_count})")
+
+    return results
 
 async def run_monitor():
     global seats_data_store, detected_sitekey
@@ -322,23 +330,25 @@ async def run_monitor():
             print("⏳ الانتظار لاكتمال تحميل الخريطة...")
             await page.wait_for_timeout(4000)
 
-            # --- الفحص البصري المباشر لمحيط المربع 525 ---
-            is_available, blue_count = await check_section_525_availability(page)
-
-            report = "📊 *تقرير فحص المربع عبر المعاينة البصرية:*\n\n"
-            report += f"🎟️ *المربع المطلوب:* `{TARGET_SECTION}` ({TARGET_CATEGORY})\n"
+            # --- حفظ لقطة الشاشة وفحص المربعات الثلاثة بصرياً ---
+            await page.screenshot(path="completed_screenshot.png")
             
-            if is_available:
-                report += f"🟢 *الحالة:* **متااااح!** (تم رصد اللون الأزرق في المربع 525) 🎉\n"
-            else:
-                report += f"🔴 *الحالة:* غير متاح حالياً (لا توجد علامات زرقاء في منطقة المربع).\n"
+            sections_status = await check_multiple_sections(page)
 
-            try:
-                await page.screenshot(path="completed_screenshot.png")
-                send_telegram_photo("completed_screenshot.png", f"🏁 *نتيجة مراقبة المربع {TARGET_SECTION}*\n\n{report}")
-            except Exception as img_err:
-                print(f"⚠️ تعذر التقاط الصورة: {img_err}")
-                send_telegram(report)
+            report = "📊 *تقرير فحص المربعات البصري:*\n\n"
+            any_available = False
+
+            for sec, status in sections_status.items():
+                if status["active"]:
+                    report += f"🟢 *المربع `{sec}`:* **ملون ومتااااح!** 🎉\n"
+                    any_available = True
+                else:
+                    report += f"🔴 *المربع `{sec}`:* رمادي مغلق.\n"
+
+            if any_available:
+                report = "🔔 *تنبيه توفر تذاكر!*\n\n" + report
+
+            send_telegram_photo("completed_screenshot.png", f"🏁 *نتيجة فحص الخريطة*\n\n{report}")
 
         except Exception as e:
             print(f"❌ حدث خطأ أثناء التنفيذ: {e}")
