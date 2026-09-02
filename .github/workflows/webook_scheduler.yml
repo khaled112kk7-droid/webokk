@@ -1,10 +1,10 @@
-name: Webook Tickets Monitor Hourly
+name: Webook Monitor
 
 on:
   schedule:
-    # التشغيل التلقائي عند بداية كل ساعة (00:00, 01:00, 02:00 ... إلخ)
-    - cron: '0 * * * *'
-  workflow_dispatch: # يتيح لك تشغيل السكربت يدوياً في أي وقت للتجربة
+    # سيتم تشغيل السكربت كل 5 دقائق
+    - cron: "*/5 * * * *"
+  workflow_dispatch: # يتيح لك التشغيل اليدوي من واجهة GitHub
 
 jobs:
   run-monitor:
@@ -19,18 +19,22 @@ jobs:
         with:
           python-version: '3.10'
 
+      # إضافة خطوة تثبيت Tesseract OCR الأساسية للنظام
+      - name: Install Tesseract OCR
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr
+
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install playwright requests pillow
-          playwright install chromium --with-deps
+          pip install playwright requests Pillow pytesseract
+          playwright install chromium
+          playwright install-deps chromium
 
-      - name: Run Webook Monitor
+      - name: Run Checkcat Script
         env:
           WEBOOK_EMIL: ${{ secrets.WEBOOK_EMIL }}
           WEBOOK_PASS: ${{ secrets.WEBOOK_PASS }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           CAPTCHA_API_KEY: ${{ secrets.CAPTCHA_API_KEY }}
-        run: |
-          python CHECKCAT.py
+        run: python CHECKCAT.py
