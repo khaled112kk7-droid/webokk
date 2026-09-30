@@ -7,7 +7,7 @@ on:
 
 # إلغاء الجلسات المتراكمة ومنع التشغيل المتوازي
 concurrency:
-  group: webook-monitor
+  group: Webook check
   cancel-in-progress: true
 
 permissions:
@@ -42,8 +42,8 @@ jobs:
 
     - name: Run Webook monitor script
       env:
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELE_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELE_CHAT_ID }}
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         GITHUB_REPOSITORY: ${{ github.repository }}
       run: python CHECKCAT.py
