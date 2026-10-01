@@ -1,7 +1,6 @@
 import os
 import asyncio
 import requests
-from playwright.async_api import async_playwright
 
 # استدعاء المتغيرات البيئية من GitHub Secrets
 EMAIL = os.getenv("WEBOOK_EMAIL") or os.getenv("WEBOOK_EMIL")
