@@ -1,55 +1,9 @@
-name: Webook check
-
-on:
-  schedule:
-    - cron: '*/5 * * * *'
-  workflow_dispatch:
-
-# إلغاء الجلسات المتراكمة ومنع التشغيل المتوازي
-concurrency:
-  group: Webook check
-  cancel-in-progress: true
-
-permissions:
-  actions: write
-  contents: write
-
-jobs:
-  check-webook:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Check out repository
-      uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
-
-    - name: Restore cache for seen events
-      uses: actions/cache@v4
-      with:
-        path: seen_events.json
-        key: seen-events-${{ github.run_id }}
-        restore-keys: |
-          seen-events-
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install playwright requests
-        playwright install chromium
-
-    - name: Run Webook monitor script
+- name: Run Webook monitor script
       env:
+        WEBOOK_EMAIL: ${{ secrets.WEBOOK_EMAIL }}
+        WEBOOK_PASS: ${{ secrets.WEBOOK_PASS }}
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELE_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELE_CHAT_ID }}
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         GITHUB_REPOSITORY: ${{ github.repository }}
       run: python CHECKCAT.py
-
-    - name: Save cache for seen events
-      uses: actions/cache@v4
-      with:
-        path: seen_events.json
-        key: seen-events-${{ github.run_id }}
