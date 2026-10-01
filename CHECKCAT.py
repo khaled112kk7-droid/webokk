@@ -1,17 +1,15 @@
 import os
-import io
 import asyncio
 import requests
-from PIL import Image
 from playwright.async_api import async_playwright
 
-# استدعاء المتغيرات من البيئة (GitHub Secrets)
-EMAIL = os.getenv("WEBOOK_EMIL") or os.getenv("WEBOOK_EMAIL")
+# استدعاء المتغيرات البيئية من GitHub Secrets
+EMAIL = os.getenv("WEBOOK_EMAIL") or os.getenv("WEBOOK_EMIL")
 PASSWORD = os.getenv("WEBOOK_PASS")
-TELEGRAM_BOT_TOKEN = os.getenv("TELE_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELE_CHAT_ID")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-EVENT_URL = "https://webook.com/ar/SA/dam/sports-event/events/alqadsiah-vs-al-hilal-tickets-26-27/book"
+EVENT_URL = "https://webook.com/ar/SA/RUH/sports-event/events/rsl-26-27-al-shabab-vs-al-hilal-227984/book"
 
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -37,7 +35,7 @@ def send_telegram_photo(photo_path, caption="📸 صورة من السكربت")
             import time
             time.sleep(2)
     
-    print("❌ فشل إرسال الصورة بعد عدة محاولات، جاري إرسال التقرير كنص...")
+    print("❌ فشل إرسال الصورة، جاري إرسال التقرير كنص...")
     send_telegram(caption)
     return False
 
@@ -52,22 +50,18 @@ async def close_cookie_banner(page):
         pass
 
 async def check_welcome_message_disappeared(page):
-    """
-    يفحص ما إذا كانت كلمة 'نورتنا' قد اختفت من الصفحة أم لا.
-    """
     print("🔍 جاري التحقق من وجود كلمة 'نورتنا' في الصفحة...")
     await page.wait_for_timeout(2000)
 
-    # البحث عن كلمة "نورتنا" داخل محتوى الصفحة
     has_welcome_text = await page.evaluate("""() => {
         return document.body.innerText.includes('نورتنا');
     }""")
 
     if not has_welcome_text:
-        print("🚨 كلمة 'نورتنا' اختفت! التذاكر أو الصفحة قد تكون فتحت الان!")
+        print("🚨 كلمة 'نورتنا' اختفت! التذاكر أو الصفحة أصبحت متاحة الآن!")
         return True
     else:
-        print("⏳ كلمة 'نورتنا' لا تزال موجودة (الصفحة لم تفتح بعد).")
+        print("⏳ كلمة 'نورتنا' لا تزال موجودة.")
         return False
 
 async def run_monitor():
@@ -109,19 +103,15 @@ async def run_monitor():
 
                 await page.wait_for_timeout(4000)
 
-            # --- الفحص بعد تسجيل الدخول ---
+            # --- فحص اختفاء كلمة 'نورتنا' ---
             is_disappeared = await check_welcome_message_disappeared(page)
 
             if is_disappeared:
-                report = "🚨 *تنبيه عاجل!*\n\n"
                 report += "🎉 تم فك الأولوية لتذاكر - الهلال و القادسية"
-                
                 await page.screenshot(path="opened_page.png")
                 send_telegram_photo("opened_page.png", f"⚡ *تغيّر في حالة الصفحة!*\n\n{report}")
             else:
-                report = "ℹ️ *حالة الفحص:*\n\n"
-                report += "لا تزال رسالة 'نورتنا، بس جيت بدري شوي!' ظاهرة ولم تفتح الصفحة بعد."
-                
+                report = "ℹ️ *حالة الفحص:*\n\nلا تزال رسالة 'نورتنا، بس جيت بدري شوي!' ظاهرة."
                 await page.screenshot(path="waiting_page.png")
                 send_telegram_photo("waiting_page.png", report)
 
