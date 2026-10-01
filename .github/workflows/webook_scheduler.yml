@@ -1,4 +1,4 @@
-- name: Run Webook monitor script
+- name: Run Webook checkk
       env:
         WEBOOK_EMAIL: ${{ secrets.WEBOOK_EMAIL }}
         WEBOOK_PASS: ${{ secrets.WEBOOK_PASS }}
