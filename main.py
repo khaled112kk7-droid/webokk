@@ -1,126 +1,140 @@
 import os
-import json
 import time
+import asyncio
 import requests
-from playwright.sync_api import sync_playwright
+from playwright.async_api import async_playwright
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELE_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELE_CHAT_ID")
-GH_TOKEN = os.getenv("GH_TOKEN")
-GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY")
+# استدعاء المتغيرات البيئية من GitHub Secrets
+EMAIL = os.getenv("WEBOOK_EMAIL") or os.getenv("WEBOOK_EMIL")
+PASSWORD = os.getenv("WEBOOK_PASS")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-CACHE_FILE = "seen_events.json"
-TARGET_URL = "https://webook.com/ar/explore?tag=football"
+EVENT_URL = "https://webook.com/ar/SA/RUH/sports-event/events/rsl-26-27-al-shabab-vs-al-hilal-227984/book"
 
-def send_telegram_message(message):
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("❌ خطأ: لم يتم العثور على توكن التليجرام")
-        return
+def send_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": message,
-        "parse_mode": "HTML"
-    }
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"}
     try:
-        res = requests.post(url, json=payload, timeout=10)
-        print("📲 حالة إرسال تليجرام:", res.status_code)
+        requests.post(url, json=payload, timeout=10)
     except Exception as e:
-        print("❌ فشل إرسال التليجرام:", e)
+        print(f"❌ فشل إرسال التنبيه عبر التليجرام: {e}")
 
-def trigger_next_run():
-    if not GH_TOKEN or not GITHUB_REPOSITORY:
-        print("⚠️ لم يتم ضبط GH_TOKEN لتشغيل الدورة التالية تلقائياً.")
-        return
+def send_telegram_photo(photo_path, caption="📸 صورة من السكربت"):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
+    for attempt in range(3):
+        try:
+            with open(photo_path, "rb") as photo:
+                payload = {"chat_id": TELEGRAM_CHAT_ID, "caption": caption}
+                files = {"photo": photo}
+                res = requests.post(url, data=payload, files=files, timeout=30)
+                if res.status_code == 200:
+                    print("📬 تم إرسال الصورة إلى التليجرام بنجاح!")
+                    return True
+        except Exception as e:
+            print(f"⚠️ محاولة ({attempt + 1}/3) فشلت لإرسال الصورة: {e}")
+            time.sleep(2)
     
-    url = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/actions/workflows/monitor.yml/dispatches"
-    headers = {
-        "Authorization": f"Bearer {GH_TOKEN}",
-        "Accept": "application/vnd.github+json"
-    }
-    data = {"ref": "main"}
+    print("❌ فشل إرسال الصورة، جاري إرسال التقرير كنص...")
+    send_telegram(caption)
+    return False
+
+async def close_cookie_banner(page):
     try:
-        res = requests.post(url, headers=headers, json=data, timeout=10)
-        if res.status_code == 204:
-            print("🔄 تم إرسال أمر التشغيل الفوري للدورة القادمة بنجاح!")
-        else:
-            print(f"⚠️ تعذر الإرسال: {res.status_code} - {res.text}")
-    except Exception as e:
-        print("❌ خطأ أثناء إرسال أمر التشغيل:", e)
+        cookie_btn = page.locator("button:has-text('قبول الكل'), button:has-text('رفض الكل الغير ضروري')").first
+        if await cookie_btn.is_visible(timeout=3000):
+            await cookie_btn.click(force=True)
+            print("🍪 تم إغلاق إشعار الكوكيز.")
+            await page.wait_for_timeout(1000)
+    except Exception:
+        pass
 
-def load_seen_events():
-    if os.path.exists(CACHE_FILE):
+async def check_welcome_message_disappeared(page):
+    print("🔍 جاري التحقق من وجود كلمة 'نورتنا' في الصفحة...")
+    await page.wait_for_timeout(2000)
+
+    has_welcome_text = await page.evaluate("""() => {
+        return document.body.innerText.includes('نورتنا');
+    }""")
+
+    if not has_welcome_text:
+        print("🚨 كلمة 'نورتنا' اختفت! التذاكر أو الصفحة أصبحت متاحة الآن!")
+        return True
+    else:
+        print("⏳ كلمة 'نورتنا' لا تزال موجودة.")
+        return False
+
+async def perform_check():
+    async with async_playwright() as p:
+        print("🚀 بدء تشغيل المتصفح...")
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(viewport={'width': 1280, 'height': 800})
+        page = await context.new_page()
+
         try:
-            with open(CACHE_FILE, "r", encoding="utf-8") as f:
-                return set(json.load(f))
-        except Exception:
-            return set()
-    return set()
+            print("🌐 [خطوة 1] الانتقال لصفحة الفعالية...")
+            await page.goto(EVENT_URL, wait_until="networkidle")
+            await close_cookie_banner(page)
 
-def save_seen_events(seen_events):
-    with open(CACHE_FILE, "w", encoding="utf-8") as f:
-        json.dump(list(seen_events), f, ensure_ascii=False, indent=2)
+            # --- تسجيل الدخول ---
+            email_input = page.locator("input[type='email'], input[placeholder*='you@email.com']").first
+            if await email_input.is_visible(timeout=5000):
+                print("📧 [خطوة 2] إدخال البريد الإلكتروني...")
+                await email_input.fill(str(EMAIL))
+                await page.wait_for_timeout(1000)
 
-def perform_check(seen_events):
-    new_found = 0
-    print(f"🔍 بدء فحص الصفحة: {TARGET_URL}")
+                try:
+                    await email_input.press("Enter")
+                except Exception:
+                    continue_btn = page.locator("button:has-text('تابع باستخدام البريد الإلكتروني')").first
+                    await continue_btn.click(force=True)
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            viewport={"width": 1280, "height": 800}
-        )
-        page = context.new_page()
-        
-        try:
-            page.goto(TARGET_URL, wait_until="domcontentloaded", timeout=45000)
-            page.wait_for_timeout(6000)
-            
-            links = page.query_selector_all("a")
-            print("📊 إجمالي الروابط بالصفحة:", len(links))
-            
-            for link in links:
-                href = link.get_attribute("href")
-                if not href:
-                    continue
-                
-                if any(path in href for path in ['/e/', '/events/', '/matches/', '/sports/']):
-                    full_url = href if href.startswith("http") else f"https://webook.com{href}"
-                    event_id = full_url.split("?")[0]
-                    
-                    if event_id not in seen_events:
-                        seen_events.add(event_id)
-                        new_found += 1
-                        
-                        title = link.inner_text().strip().replace("\n", " ")
-                        display_name = title if title else "مباراة / فعالية جديدة"
-                        
-                        msg = f"⚽ <b>فعالية جديدة على Webook!</b>\n\n📌 <b>العنوان:</b> {display_name}\n🔗 <b>الرابط:</b> {full_url}"
-                        print("✨ تم كشف فعالية جديدة:", display_name)
-                        send_telegram_message(msg)
-            
-            save_seen_events(seen_events)
-            print("✅ اكتمل الفحص. فعاليات جديدة:", new_found)
+                password_input = page.locator("input[type='password']").first
+                await password_input.wait_for(timeout=15000)
+                print("🔑 [خطوة 3] إدخال كلمة المرور...")
+                await password_input.fill(str(PASSWORD))
+                await page.wait_for_timeout(1000)
+
+                try:
+                    await password_input.press("Enter")
+                except Exception:
+                    login_btn = page.locator("button:has-text('تسجيل الدخول')").first
+                    await login_btn.click(force=True)
+
+                await page.wait_for_timeout(4000)
+
+            # --- فحص اختفاء كلمة 'نورتنا' ---
+            is_disappeared = await check_welcome_message_disappeared(page)
+
+            if is_disappeared:
+                report = "🚨 *تنبيه عاجل!*\n\n🎉 *اختفت رسالة 'نورتنا'!* قد تكون التذاكر أصبحت متاحة الآن."
+                await page.screenshot(path="opened_page.png")
+                send_telegram_photo("opened_page.png", f"⚡ *تغيّر في حالة الصفحة!*\n\n{report}")
+            else:
+                report = "ℹ️ *حالة الفحص:*\n\nلا تزال رسالة 'نورتنا، بس جيت بدري شوي!' ظاهرة."
+                await page.screenshot(path="waiting_page.png")
+                send_telegram_photo("waiting_page.png", report)
 
         except Exception as e:
-            print("❌ حدث خطأ أثناء الفحص:", e)
+            print(f"❌ حدث خطأ أثناء التنفيذ: {e}")
+            try:
+                await page.screenshot(path="error_screenshot.png")
+                send_telegram_photo("error_screenshot.png", f"❌ توقف السكربت عند الخطأ:\n`{e}`")
+            except Exception as img_err:
+                print(f"فشل إرسال الصورة: {img_err}")
         finally:
-            browser.close()
+            print("🏁 إغلاق المتصفح وإنهاء دورة الفحص.")
+            await browser.close()
 
-def run_monitor():
+async def main():
     # إجراء 10 فحوصات يفصل بين كل فحص وآخر 30 ثانية
     for cycle in range(1, 11):
-        print(f"--- ⏱️ الفحص رقم ({cycle} من 10) ---")
-        seen_events = load_seen_events()
-        perform_check(seen_events)
+        print(f"\n--- ⏱️ الفحص رقم ({cycle} من 10) ---")
+        await perform_check()
         
         if cycle < 10:
-            print("⏳ انتظار 30 ثانية للشفافية والسلاسة...")
-            time.sleep(30)
-
-    # طلب تشغيل الدورة القادمة فوراً
-    trigger_next_run()
+            print("⏳ انتظار 30 ثانية قبل إجراء الفحص التالي...")
+            await asyncio.sleep(30)
 
 if __name__ == "__main__":
-    run_monitor()
+    asyncio.run(main())
