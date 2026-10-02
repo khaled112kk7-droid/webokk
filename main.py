@@ -7,8 +7,8 @@ from playwright.async_api import async_playwright
 # استدعاء المتغيرات البيئية من GitHub Secrets
 EMAIL = os.getenv("WEBOOK_EMAIL") or os.getenv("WEBOOK_EMIL")
 PASSWORD = os.getenv("WEBOOK_PASS")
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+TELEGRAM_BOT_TOKEN = os.getenv("TELE_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELE_CHAT_ID")
 
 EVENT_URL = "https://webook.com/ar/SA/RUH/sports-event/events/rsl-26-27-al-shabab-vs-al-hilal-227984/book"
 
