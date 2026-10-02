@@ -1,13 +1,13 @@
-name: GFF TIKET
+name: GFF WORK
 
 on:
-  workflow_dispatch: # يتيح لك تشغيل السكربت يدوياً بنقرة زر من GitHub
-  # schedule:
-  #   - cron: '*/15 * * * *' # يمكنك تفعيل هذا الخيار للتشغيل التلقائي كل 15 دقيقة
+  workflow_dispatch: # تشغيل يدوي أول مرة
 
 jobs:
   run-monitor:
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
 
     steps:
       - name: Checkout code
@@ -16,15 +16,46 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.x'
+          python-version: '3.10'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests
+          pip install playwright requests
+
+      - name: Install Playwright Browsers
+        run: |
+          python -m playwright install chromium
+          python -m playwright install-deps chromium
 
       - name: Run script
+        id: run_script
+        continue-on-error: true
         env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python GFFTIK.py
+          TARGET_URL: ${{ secrets.TARGET_URL }}
+        run: python monitor.py
+
+      # في حال تم اكتشاف تغيير (Exit code 100)، يتوقف التشغيل المستمر
+      - name: Check if change was detected
+        if: steps.run_script.exit_code == 100
+        run: |
+          echo "تم اكتشاف تغيير في الصفحة وإرسال التنبيه. سيتوقف التكرار التلقائي الآن."
+          exit 0
+
+      # إذا حدث خطأ غير متوقع في السكربت، يتم إيقاف العملية
+      - name: Fail if unexpected error
+        if: steps.run_script.exit_code != 0 && steps.run_script.exit_code != 100
+        run: |
+          echo "حدث خطأ غير متوقع في السكربت."
+          exit 1
+
+      # إذا انتهت الـ 10 محاولات بدون تغيير، يعيد تشغيل الـ workflow تلقائياً من جديد
+      - name: Trigger next run automatically
+        if: steps.run_script.exit_code == 0
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "لم يتم اكتشاف أي تغيير. إعادة تشغيل الـ Workflow فوراً..."
+          gh api -X POST /repos/${{ github.repository }}/actions/workflows/monitor.yml/dispatches -f ref=${{ github.ref }}
