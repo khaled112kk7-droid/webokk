@@ -3,10 +3,10 @@ name: Webook Monitor
 on:
   workflow_dispatch:
 
-# يمنع التشغيل المتوازي نهائياً ويجبر الـ Workflow على الانتظار حتى ينتهي الحالي
+# منع التراكم والتوازي: تلغي هذه الخاصية أي جلسة معلقة أو سابقة وتضمن تشغيل جلسة واحدة متسلسلة دائماً
 concurrency:
   group: webook-monitor-single
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions:
   actions: write
@@ -49,7 +49,6 @@ jobs:
           echo "🛑 تم إرسال تنبيه فتح التذاكر! يتم إيقاف التكرار التلقائي الآن."
         else
           echo "🔄 جاري إطلاق تشغيل جديد متسلسل..."
-          # انتظار ثانيتين لضمان إغلاق الجلسة السابقة
           sleep 2
           gh workflow run "Webook Monitor"
         fi
