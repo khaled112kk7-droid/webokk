@@ -40,7 +40,7 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TARGET_URL: ${{ secrets.TARGET_URL }}
-        run: python monitor.py
+        run: python GFFTIK.py
 
       # 1. إذا تم اكتشاف الفعالية (السكربت خرج بـ Exit code 100): يتوقف التكرار فوراً
       - name: Handle Event Detection (Stop Workflow Loop)
