@@ -4,8 +4,8 @@ import time
 import requests
 from playwright.sync_api import sync_playwright
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+TELEGRAM_BOT_TOKEN = os.getenv("TELE_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELE_CHAT_ID")
 GH_TOKEN = os.getenv("GH_TOKEN")
 GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY")
 
