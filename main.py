@@ -4,10 +4,10 @@ import requests
 from playwright.async_api import async_playwright
 
 # استدعاء المتغيرات البيئية المطابقة لـ GitHub Secrets
-EMAIL = os.getenv("WEBOOK_EMAIL")
+EMAIL = os.getenv("WEBOOK_EMAIL") or os.getenv("WEBOOK_EMIL")
 PASSWORD = os.getenv("WEBOOK_PASS")
-TELEGRAM_BOT_TOKEN = os.getenv("TELE_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELE_CHAT_ID")
+TELEGRAM_BOT_TOKEN = os.getenv("TELE_BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELE_CHAT_ID") or os.getenv("TELEGRAM_CHAT_ID")
 
 EVENT_URL = "https://webook.com/ar/sa/dam/sports-event/events/alqadsiah-vs-al-hilal-tickets-26-27/book"
 
@@ -41,7 +41,7 @@ def send_telegram_photo(photo_path, caption="📸 صورة من السكربت")
             import time
             time.sleep(2)
     
-    print("❌ فشل إرسال الصورة، جاري إرسال التقرير كنص...")
+    print("❌ فشل إرسال الصورة، جاري إرسال التتقرير كنص...")
     send_telegram(f"{caption}\n\n(تعذر إرفاق صورة الشاشة)")
     return False
 
@@ -89,23 +89,35 @@ async def perform_check():
             await page.wait_for_timeout(3000)
             await close_cookie_banner(page)
 
-            # --- الخطوة 1: إدخال البريد الإلكتروني والمتابعة ---
+            # --- الخطوة 1: إدخال البريد الإلكتروني والمتابعة بكافة الطرق الممكنة ---
             email_input = page.locator("input[type='email'], input[name='email']").first
             try:
                 await email_input.wait_for(state="visible", timeout=10000)
-                print("📧 جاري إدخال البريد الإلكتروني...")
+                print("📧 جاري إدخال البريد الإلكتروني بكتابة تفاعلية...")
                 await email_input.click()
-                await email_input.fill(str(EMAIL))
-                await page.wait_for_timeout(1000)  # انتظار لتفعيل الزر بعد الكتابة
+                # تجريف الحقل أولاً ثم الكتابة حرفاً بحرف لتفعيل الزر
+                await email_input.fill("")
+                await email_input.type(str(EMAIL), delay=50)
+                await page.wait_for_timeout(1000)
 
-                print("🔘 الضغط على زر تابع باستخدام البريد الإلكتروني...")
-                submit_btn = page.locator("button:has-text('تابع باستخدام البريد الإلكتروني'), button:has-text('تابع'), button[type='submit']").first
+                # 1. محاولة الضغط بزر Enter من الكيبورد
+                print("⌨️ تجربة الضغط على Enter...")
+                await email_input.press("Enter")
+                await page.wait_for_timeout(1500)
+
+                # 2. إذا لم تتغير الصفحة، النقر المباشر على الزر بالماوس
+                submit_btn = page.locator("button:has-text('تابع باستخدام البريد الإلكتروني'), button:has-text('تابع')").first
                 if await submit_btn.is_visible(timeout=3000):
+                    print("🔘 النقر على زر المتابعة...")
                     await submit_btn.click(force=True)
-                else:
-                    await email_input.press("Enter")
+                    # دعم إضافي عبر JavaScript في حال عدم تجاوب النقر العادي
+                    await page.evaluate("""() => {
+                        const btns = Array.from(document.querySelectorAll('button'));
+                        const targetBtn = btns.find(b => b.innerText.includes('تابع'));
+                        if (targetBtn) targetBtn.click();
+                    }""")
 
-                await page.wait_for_timeout(2000)
+                await page.wait_for_timeout(2500)
             except Exception as e:
                 print(f"❌ فشلت خطوة إدخال البريد: {e}")
                 await page.screenshot(path="step1_email_failed.png")
@@ -119,14 +131,16 @@ async def perform_check():
                 await password_input.wait_for(state="visible", timeout=15000)
                 print("🔑 جاري إدخال كلمة المرور...")
                 await password_input.click()
-                await password_input.fill(str(PASSWORD))
+                await password_input.fill("")
+                await password_input.type(str(PASSWORD), delay=50)
                 await page.wait_for_timeout(1000)
 
-                login_btn = page.locator("button:has-text('تسجيل الدخول'), button[type='submit']").first
+                # ضغطة Enter لتسجيل الدخول
+                await password_input.press("Enter")
+
+                login_btn = page.locator("button:has-text('تسجيل الدخول')").first
                 if await login_btn.is_visible(timeout=3000):
                     await login_btn.click(force=True)
-                else:
-                    await password_input.press("Enter")
 
                 await page.wait_for_timeout(4000)
                 await close_cookie_banner(page)
