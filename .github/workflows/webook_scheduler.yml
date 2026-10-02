@@ -1,9 +1,0 @@
-- name: Run Webook checkk
-      env:
-        WEBOOK_EMAIL: ${{ secrets.WEBOOK_EMAIL }}
-        WEBOOK_PASS: ${{ secrets.WEBOOK_PASS }}
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELE_BOT_TOKEN }}
-        TELEGRAM_CHAT_ID: ${{ secrets.TELE_CHAT_ID }}
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        GITHUB_REPOSITORY: ${{ github.repository }}
-      run: python CHECKCAT.py
