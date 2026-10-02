@@ -142,7 +142,7 @@ async def perform_check():
 
                 if disappeared:
                     print("🚨 اختفت كلمة 'نورتنا'! جاري إرسال التنبيه الفوري وإيقاف الفحص...")
-                    report = "🚨 *تنبيه عاجل وخاص!*\n\n🎉 *اختفت رسالة 'نورتنا'!* التذاكر قد تكون فتحت الآن، ادخل واحجز فوراً!"
+                    report = "🚨 *تم فك الأولوية!*\n\n🎉 *تذاكر الهلال والقادسية!"
                     await page.screenshot(path="tickets_open.png")
                     send_telegram_photo("tickets_open.png", report)
                     
