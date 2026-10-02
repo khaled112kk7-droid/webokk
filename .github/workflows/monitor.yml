@@ -1,14 +1,7 @@
 name: Webook Monitor
 
 on:
-  schedule:
-    - cron: '*/5 * * * *'
   workflow_dispatch:
-
-# إلغاء الجلسات المتراكمة ومنع التشغيل المتوازي
-concurrency:
-  group: webook-monitor
-  cancel-in-progress: true
 
 permissions:
   actions: write
@@ -56,8 +49,8 @@ jobs:
         path: seen_events.json
         key: seen-events-${{ github.run_id }}
 
-    # الخطوة الجديدة: استدعاء وتشغيل الـ Workflow تلقائياً بمجرد الانتهاء
-    - name: Trigger Next Run Automatically
+    # تشغيل الملف التالي فور انتهاء الحالي بنجاح ودون تداخل
+    - name: Trigger Next Run
       if: always()
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
