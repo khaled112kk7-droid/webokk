@@ -35,7 +35,7 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TARGET_URL: ${{ secrets.TARGET_URL }}
-        run: python monitor.py
+        run: python GFFTIK.py
 
       # في حال تم اكتشاف تغيير (Exit code 100)، يتوقف التشغيل المستمر
       - name: Check if change was detected
