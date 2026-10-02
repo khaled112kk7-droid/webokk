@@ -1,4 +1,5 @@
 import os
+import sys
 import asyncio
 import requests
 from playwright.async_api import async_playwright
@@ -7,9 +8,9 @@ from playwright.async_api import async_playwright
 EMAIL = os.getenv("WEBOOK_EMAIL")
 PASSWORD = os.getenv("WEBOOK_PASS")
 TELEGRAM_BOT_TOKEN = os.getenv("TELE_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELE_CHAT_ID")
+TELEGRAM_CHAT_ID = os.getenv("TELE_CHAT_ID"
 
-EVENT_URL = "https://webook.com/ar/SA/mjm/sports-event/events/rsl-r8-al-fayha-vs-al-riyadh-25355/book"
+EVENT_URL = "https://webook.com/ar/sa/mjm/sports-event/events/rsl-r8-al-fayha-vs-al-riyadh-25355/book"
 
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -130,7 +131,7 @@ async def perform_check():
                 print(f"❌ فشلت خطوة كلمة المرور: {e}")
                 return
 
-            # --- 3. الحلقة: تحديث الصفحة 10 مرات مع انتظر 10 ثوانٍ بين كل تحديث ---
+            # --- 3. الحلقة: تحديث الصفحة 10 مرات مع انتظار 10 ثوانٍ بين كل تحديث ---
             print("🔄 بدء حلقة التحديث والفحص (10 تحديثات، بين كل تحديث 10 ثوانٍ)...")
             
             for iteration in range(1, 11):
@@ -140,10 +141,15 @@ async def perform_check():
                 disappeared = await is_welcome_disappeared(page)
 
                 if disappeared:
-                    print("🚨 أهلاً! اختفت كلمة 'نورتنا'! جاري إرسال التنبيه الفوري وإيقاف الفحص...")
+                    print("🚨 اختفت كلمة 'نورتنا'! جاري إرسال التنبيه الفوري وإيقاف الفحص...")
                     report = "🚨 *تنبيه عاجل وخاص!*\n\n🎉 *اختفت رسالة 'نورتنا'!* التذاكر قد تكون فتحت الآن، ادخل واحجز فوراً!"
                     await page.screenshot(path="tickets_open.png")
                     send_telegram_photo("tickets_open.png", report)
+                    
+                    # إنشاء ملف إشارة الإيقاف لمنع الـ Workflow القادم من العمل
+                    with open("stop_signal.txt", "w") as f:
+                        f.write("STOP")
+
                     break  # إيقاف التكرار فوراً
                 else:
                     print(f"⏳ المحاولة ({iteration}/10): كلمة 'نورتنا' لا تزال موجودة.")
@@ -151,7 +157,7 @@ async def perform_check():
                 # إذا لم نصل بعد إلى المحاولة العاشرة، ننتظر 10 ثوانٍ ثم نعيد تحديث الصفحة
                 if iteration < 10:
                     print("⏱️ انتظار 10 ثوانٍ قبل التحديث القادم...")
-                    await page.wait_for_timeout(10000)  # انتظار 10 ثوانٍ
+                    await page.wait_for_timeout(10000)
                     print("🔄 إعادة تحديث الصفحة (Reload)...")
                     await page.reload(wait_until="domcontentloaded")
                     await page.wait_for_timeout(2000)
