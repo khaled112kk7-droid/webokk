@@ -142,7 +142,7 @@ async def perform_check():
 
                 if disappeared:
                     print("🚨 اختفت كلمة 'نورتنا'! جاري إرسال التنبيه الفوري وإيقاف الفحص...")
-                    report = f"تم فك الأولوية لتذاكر الهلال والقادسية\n\n🔗 رابط الحجز:\n{EVENT_URL}"
+                    report = f"إنتهت الأولوية لتذاكر الهلال والقادسية\n\n🔗 رابط الحجز:\n{EVENT_URL}"
                     await page.screenshot(path="tickets_open.png")
                     send_telegram_photo("tickets_open.png", report)
                     
