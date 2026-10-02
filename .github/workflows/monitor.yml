@@ -3,6 +3,11 @@ name: Webook Monitor
 on:
   workflow_dispatch:
 
+# يمنع التشغيل المتوازي نهائياً ويجبر الـ Workflow على الانتظار حتى ينتهي الحالي
+concurrency:
+  group: webook-monitor-single
+  cancel-in-progress: false
+
 permissions:
   actions: write
   contents: write
@@ -35,7 +40,6 @@ jobs:
         GITHUB_REPOSITORY: ${{ github.repository }}
       run: python main.py
 
-    # التشغيل التلقائي القادم يتم فقط في حال عدم وجود ملف الإيقاف stop_signal.txt
     - name: Trigger Next Run Automatically
       if: success()
       env:
@@ -44,6 +48,8 @@ jobs:
         if [ -f "stop_signal.txt" ]; then
           echo "🛑 تم إرسال تنبيه فتح التذاكر! يتم إيقاف التكرار التلقائي الآن."
         else
-          echo "🔄 لم تفتح التذاكر بعد، جاري إطلاق تشغيل جديد متسلسل..."
+          echo "🔄 جاري إطلاق تشغيل جديد متسلسل..."
+          # انتظار ثانيتين لضمان إغلاق الجلسة السابقة
+          sleep 2
           gh workflow run "Webook Monitor"
         fi
