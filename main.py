@@ -72,42 +72,39 @@ async def perform_check():
         page = await context.new_page()
 
         try:
-            print("🌐 [خطوة 1] الانتقال لصفحة الفعالية...")
+            print("الانتقال المباشر لصفحة الفعالية...")
             await page.goto(EVENT_URL, wait_until="networkidle")
             await close_cookie_banner(page)
 
-            # --- تسجيل الدخول المطور ---
-            email_input = page.locator("input[type='email'], input[placeholder*='you@email.com'], input[name='email']").first
+            # تسجيل الدخول
+            email_input = page.locator("input[type='email'], input[placeholder*='you@email.com']").first
             if await email_input.is_visible(timeout=5000):
-                print("📧 [خطوة 2] إدخال البريد الإلكتروني...")
-                await email_input.fill(str(EMAIL))
+                print("جاري إدخال البريد الإلكتروني...")
+                await email_input.fill(str(PHONE))
                 await page.wait_for_timeout(1000)
 
-                # البحث عن زر المتابعة والنقر عليه
-                submit_email_btn = page.locator("button[type='submit'], button:has-text('تابع'), button:has-text('التالي'), button:has-text('تسجيل الدخول')").first
-                if await submit_email_btn.is_visible(timeout=3000):
-                    await submit_email_btn.click(force=True)
-                else:
+                try:
                     await email_input.press("Enter")
+                except Exception:
+                    continue_btn = page.locator("button:has-text('تابع باستخدام البريد الإلكتروني')").first
+                    await continue_btn.click(force=True)
 
-                print("⏳ انتظار ظهور خانة كلمة المرور...")
-                await page.wait_for_timeout(3000)
-
-                # محددات متعدّدة لخانة كلمة المرور
-                password_input = page.locator("input[type='password'], input[name='password']").first
-                await password_input.wait_for(state="visible", timeout=15000)
-                
-                print("🔑 [خطوة 3] إدخال كلمة المرور...")
+                password_input = page.locator("input[type='password']").first
+                await password_input.wait_for(timeout=15000)
+                print("جاري إدخال كلمة المرور...")
                 await password_input.fill(str(PASSWORD))
                 await page.wait_for_timeout(1000)
 
-                submit_pass_btn = page.locator("button[type='submit'], button:has-text('تسجيل الدخول')").first
-                if await submit_pass_btn.is_visible(timeout=3000):
-                    await submit_pass_btn.click(force=True)
-                else:
+                try:
                     await password_input.press("Enter")
+                except Exception:
+                    login_btn = page.locator("button:has-text('تسجيل الدخول')").first
+                    await login_btn.click(force=True)
 
-                await page.wait_for_timeout(5000)
+                await page.wait_for_timeout(3000)
+                print("تم تسجيل الدخول بنجاح!")
+
+                await close_cookie_banner(page)
 
             # --- فحص اختفاء كلمة 'نورتنا' ---
             is_disappeared = await check_welcome_message_disappeared(page)
