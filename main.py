@@ -3,7 +3,6 @@ import asyncio
 import requests
 from playwright.async_api import async_playwright
 
-# استدعاء المتغيرات البيئية المطابقة لـ GitHub Secrets
 EMAIL = os.getenv("WEBOOK_EMAIL") or os.getenv("WEBOOK_EMIL")
 PASSWORD = os.getenv("WEBOOK_PASS")
 TELEGRAM_BOT_TOKEN = os.getenv("TELE_BOT_TOKEN")
@@ -83,9 +82,10 @@ async def perform_check():
             await page.wait_for_timeout(3000)
             await close_cookie_banner(page)
 
-            # --- تسجيل الدخول ---
+            # --- الخطوة 1: إدخال البريد الإلكتروني ---
             email_input = page.locator("input[type='email'], input[name='email'], input[placeholder*='you@email.com']").first
-            if await email_input.is_visible(timeout=5000):
+            try:
+                await email_input.wait_for(state="visible", timeout=10000)
                 print("📧 جاري إدخال البريد الإلكتروني...")
                 await email_input.click()
                 await email_input.type(str(EMAIL), delay=50)
@@ -98,12 +98,17 @@ async def perform_check():
                         await continue_btn.click(force=True)
                 except Exception:
                     pass
+            except Exception as e:
+                print(f"❌ فشلت خطوة إدخال البريد: {e}")
+                await page.screenshot(path="step1_email_failed.png")
+                send_telegram_photo("step1_email_failed.png", f"❌ فشلت خطوة إدخال البريد الإلكتروني:\n`{e}`")
+                return
 
-                print("⏳ انتظار ظهور خانة كلمة المرور...")
-                await page.wait_for_timeout(3000)
-
-                password_input = page.locator("input[type='password'], input[name='password']").first
-                await password_input.wait_for(state="visible", timeout=15000)
+            # --- الخطوة 2: انتظار وإدخال كلمة المرور ---
+            print("⏳ انتظار ظهور خانة كلمة المرور...")
+            password_input = page.locator("input[type='password'], input[name='password']").first
+            try:
+                await password_input.wait_for(state="visible", timeout=12000)
                 print("🔑 جاري إدخال كلمة المرور...")
                 await password_input.type(str(PASSWORD), delay=50)
                 await page.wait_for_timeout(1000)
@@ -117,10 +122,14 @@ async def perform_check():
                     pass
 
                 await page.wait_for_timeout(4000)
-                print("تمت محاولة تسجيل الدخول بنجاح!")
                 await close_cookie_banner(page)
+            except Exception as e:
+                print(f"❌ فشلت خطوة كلمة المرور: {e}")
+                await page.screenshot(path="step2_password_failed.png")
+                send_telegram_photo("step2_password_failed.png", f"⚠️ فشل الوصول لخانة كلمة المرور (شاهد صورة الصفحة الحالية):")
+                return
 
-            # --- فحص اختفاء كلمة 'نورتنا' ---
+            # --- الخطوة 3: فحص اختفاء كلمة 'نورتنا' ---
             is_disappeared = await check_welcome_message_disappeared(page)
 
             if is_disappeared:
@@ -133,7 +142,7 @@ async def perform_check():
                 send_telegram_photo("waiting_page.png", report)
 
         except Exception as e:
-            print(f"❌ حدث خطأ أثناء التنفيذ: {e}")
+            print(f"❌ حدث خطأ غير متوقع: {e}")
             try:
                 await page.screenshot(path="error_screenshot.png")
                 send_telegram_photo("error_screenshot.png", f"❌ توقف السكربت عند الخطأ:\n`{e}`")
