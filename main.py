@@ -5,8 +5,8 @@ from playwright.async_api import async_playwright
 
 EMAIL = os.getenv("WEBOOK_EMAIL") or os.getenv("WEBOOK_EMIL")
 PASSWORD = os.getenv("WEBOOK_PASS")
-TELEGRAM_BOT_TOKEN = os.getenv("TELE_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELE_CHAT_ID")
+TELEGRAM_BOT_TOKEN = os.getenv("TELE_BOT_TOKEN") or os.getenv("TELE_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELE_CHAT_ID") or os.getenv("TELE_CHAT_ID")
 
 EVENT_URL = "https://webook.com/ar/sa/dam/sports-event/events/alqadsiah-vs-al-hilal-tickets-26-27/book"
 
@@ -20,22 +20,28 @@ def send_telegram(message):
 
 def send_telegram_photo(photo_path, caption="📸 صورة من السكربت"):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("⚠️ توكن التليجرام أو Chat ID غير معرف بشكل صحيح في المتغيرات البيئية.")
+        return False
+
     for attempt in range(3):
         try:
             with open(photo_path, "rb") as photo:
                 payload = {"chat_id": TELEGRAM_CHAT_ID, "caption": caption}
-                files = {"photo": photo}
+                files = {"photo": ("screenshot.png", photo, "image/png")}
                 res = requests.post(url, data=payload, files=files, timeout=30)
                 if res.status_code == 200:
                     print("📬 تم إرسال الصورة إلى التليجرام بنجاح!")
                     return True
+                else:
+                    print(f"⚠️ استجابة التليجرام: {res.status_code} - {res.text}")
         except Exception as e:
             print(f"⚠️ محاولة ({attempt + 1}/3) فشلت لإرسال الصورة: {e}")
             import time
             time.sleep(2)
     
     print("❌ فشل إرسال الصورة، جاري إرسال التقرير كنص...")
-    send_telegram(caption)
+    send_telegram(f"{caption}\n\n(تعذر إرفاق صورة الشاشة)")
     return False
 
 async def close_cookie_banner(page):
@@ -68,7 +74,11 @@ async def perform_check():
         print("🚀 بدء تشغيل المتصفح...")
         browser = await p.chromium.launch(
             headless=True,
-            args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
+            args=[
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-blink-features=AutomationControlled'
+            ]
         )
         context = await browser.new_context(
             viewport={'width': 1280, 'height': 800},
@@ -88,16 +98,17 @@ async def perform_check():
                 await email_input.wait_for(state="visible", timeout=10000)
                 print("📧 جاري إدخال البريد الإلكتروني...")
                 await email_input.click()
-                await email_input.type(str(EMAIL), delay=50)
+                await email_input.fill(str(EMAIL))
                 await page.wait_for_timeout(1000)
 
-                await email_input.press("Enter")
-                try:
-                    continue_btn = page.locator("button:has-text('تابع باستخدام البريد الإلكتروني'), button[type='submit']").first
-                    if await continue_btn.is_visible(timeout=2000):
-                        await continue_btn.click(force=True)
-                except Exception:
-                    pass
+                # محاولة الضغط على زر المتابعة الصريح أولاً ثم Enter
+                continue_btn = page.locator("button:has-text('تابع'), button:has-text('متابعة'), button[type='submit']").first
+                if await continue_btn.is_visible(timeout=3000):
+                    await continue_btn.click(force=True)
+                else:
+                    await email_input.press("Enter")
+                
+                await page.wait_for_timeout(3000)
             except Exception as e:
                 print(f"❌ فشلت خطوة إدخال البريد: {e}")
                 await page.screenshot(path="step1_email_failed.png")
@@ -110,23 +121,22 @@ async def perform_check():
             try:
                 await password_input.wait_for(state="visible", timeout=12000)
                 print("🔑 جاري إدخال كلمة المرور...")
-                await password_input.type(str(PASSWORD), delay=50)
+                await password_input.click()
+                await password_input.fill(str(PASSWORD))
                 await page.wait_for_timeout(1000)
 
-                await password_input.press("Enter")
-                try:
-                    login_btn = page.locator("button:has-text('تسجيل الدخول'), button[type='submit']").first
-                    if await login_btn.is_visible(timeout=2000):
-                        await login_btn.click(force=True)
-                except Exception:
-                    pass
+                login_btn = page.locator("button:has-text('تسجيل الدخول'), button[type='submit']").first
+                if await login_btn.is_visible(timeout=3000):
+                    await login_btn.click(force=True)
+                else:
+                    await password_input.press("Enter")
 
                 await page.wait_for_timeout(4000)
                 await close_cookie_banner(page)
             except Exception as e:
                 print(f"❌ فشلت خطوة كلمة المرور: {e}")
                 await page.screenshot(path="step2_password_failed.png")
-                send_telegram_photo("step2_password_failed.png", f"⚠️ فشل الوصول لخانة كلمة المرور (شاهد صورة الصفحة الحالية):")
+                send_telegram_photo("step2_password_failed.png", "⚠️ فشلت خطوة كلمة المرور. إليك صورة الصفحة الحالية:")
                 return
 
             # --- الخطوة 3: فحص اختفاء كلمة 'نورتنا' ---
