@@ -3,6 +3,7 @@ import asyncio
 import requests
 from playwright.async_api import async_playwright
 
+# استدعاء المتغيرات البيئية المطابقة لـ GitHub Secrets
 EMAIL = os.getenv("WEBOOK_EMAIL")
 PASSWORD = os.getenv("WEBOOK_PASS")
 TELEGRAM_BOT_TOKEN = os.getenv("TELE_BOT_TOKEN")
@@ -74,11 +75,7 @@ async def perform_check():
         print("🚀 بدء تشغيل المتصفح...")
         browser = await p.chromium.launch(
             headless=True,
-            args=[
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-blink-features=AutomationControlled'
-            ]
+            args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
         )
         context = await browser.new_context(
             viewport={'width': 1280, 'height': 800},
@@ -92,23 +89,23 @@ async def perform_check():
             await page.wait_for_timeout(3000)
             await close_cookie_banner(page)
 
-            # --- الخطوة 1: إدخال البريد الإلكتروني ---
-            email_input = page.locator("input[type='email'], input[name='email'], input[placeholder*='you@email.com']").first
+            # --- الخطوة 1: إدخال البريد الإلكتروني والمتابعة ---
+            email_input = page.locator("input[type='email'], input[name='email']").first
             try:
                 await email_input.wait_for(state="visible", timeout=10000)
                 print("📧 جاري إدخال البريد الإلكتروني...")
                 await email_input.click()
                 await email_input.fill(str(EMAIL))
-                await page.wait_for_timeout(1000)
+                await page.wait_for_timeout(1000)  # انتظار لتفعيل الزر بعد الكتابة
 
-                # محاولة الضغط على زر المتابعة الصريح أولاً ثم Enter
-                continue_btn = page.locator("button:has-text('تابع'), button:has-text('متابعة'), button[type='submit']").first
-                if await continue_btn.is_visible(timeout=3000):
-                    await continue_btn.click(force=True)
+                print("🔘 الضغط على زر تابع باستخدام البريد الإلكتروني...")
+                submit_btn = page.locator("button:has-text('تابع باستخدام البريد الإلكتروني'), button:has-text('تابع'), button[type='submit']").first
+                if await submit_btn.is_visible(timeout=3000):
+                    await submit_btn.click(force=True)
                 else:
                     await email_input.press("Enter")
-                
-                await page.wait_for_timeout(3000)
+
+                await page.wait_for_timeout(2000)
             except Exception as e:
                 print(f"❌ فشلت خطوة إدخال البريد: {e}")
                 await page.screenshot(path="step1_email_failed.png")
@@ -119,7 +116,7 @@ async def perform_check():
             print("⏳ انتظار ظهور خانة كلمة المرور...")
             password_input = page.locator("input[type='password'], input[name='password']").first
             try:
-                await password_input.wait_for(state="visible", timeout=12000)
+                await password_input.wait_for(state="visible", timeout=15000)
                 print("🔑 جاري إدخال كلمة المرور...")
                 await password_input.click()
                 await password_input.fill(str(PASSWORD))
