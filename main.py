@@ -8,7 +8,7 @@ from playwright.async_api import async_playwright
 EMAIL = os.getenv("WEBOOK_EMAIL")
 PASSWORD = os.getenv("WEBOOK_PASS")
 TELEGRAM_BOT_TOKEN = os.getenv("TELE_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELE_CHAT_ID"
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID"
 
 EVENT_URL = "https://webook.com/ar/sa/mjm/sports-event/events/rsl-r8-al-fayha-vs-al-riyadh-25355/book"
 
