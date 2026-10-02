@@ -3,7 +3,7 @@ import asyncio
 import requests
 from playwright.async_api import async_playwright
 
-# استدعاء المتغيرات البيئية من GitHub Secrets
+# استدعاء المتغيرات البيئية المطابقة لـ GitHub Secrets
 EMAIL = os.getenv("WEBOOK_EMAIL") or os.getenv("WEBOOK_EMIL")
 PASSWORD = os.getenv("WEBOOK_PASS")
 TELEGRAM_BOT_TOKEN = os.getenv("TELE_BOT_TOKEN")
@@ -67,43 +67,57 @@ async def check_welcome_message_disappeared(page):
 async def perform_check():
     async with async_playwright() as p:
         print("🚀 بدء تشغيل المتصفح...")
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(viewport={'width': 1280, 'height': 800})
+        browser = await p.chromium.launch(
+            headless=True,
+            args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
+        )
+        context = await browser.new_context(
+            viewport={'width': 1280, 'height': 800},
+            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+        )
         page = await context.new_page()
 
         try:
-            print("الانتقال المباشر لصفحة الفعالية...")
-            await page.goto(EVENT_URL, wait_until="networkidle")
+            print("🌐 الانتقال المباشر لصفحة الفعالية...")
+            await page.goto(EVENT_URL, wait_until="domcontentloaded")
+            await page.wait_for_timeout(3000)
             await close_cookie_banner(page)
 
-            # تسجيل الدخول
-            email_input = page.locator("input[type='email'], input[placeholder*='you@email.com']").first
+            # --- تسجيل الدخول ---
+            email_input = page.locator("input[type='email'], input[name='email'], input[placeholder*='you@email.com']").first
             if await email_input.is_visible(timeout=5000):
-                print("جاري إدخال البريد الإلكتروني...")
-                await email_input.fill(str(PHONE))
+                print("📧 جاري إدخال البريد الإلكتروني...")
+                await email_input.click()
+                await email_input.type(str(EMAIL), delay=50)
                 await page.wait_for_timeout(1000)
 
+                await email_input.press("Enter")
                 try:
-                    await email_input.press("Enter")
+                    continue_btn = page.locator("button:has-text('تابع باستخدام البريد الإلكتروني'), button[type='submit']").first
+                    if await continue_btn.is_visible(timeout=2000):
+                        await continue_btn.click(force=True)
                 except Exception:
-                    continue_btn = page.locator("button:has-text('تابع باستخدام البريد الإلكتروني')").first
-                    await continue_btn.click(force=True)
+                    pass
 
-                password_input = page.locator("input[type='password']").first
-                await password_input.wait_for(timeout=15000)
-                print("جاري إدخال كلمة المرور...")
-                await password_input.fill(str(PASSWORD))
-                await page.wait_for_timeout(1000)
-
-                try:
-                    await password_input.press("Enter")
-                except Exception:
-                    login_btn = page.locator("button:has-text('تسجيل الدخول')").first
-                    await login_btn.click(force=True)
-
+                print("⏳ انتظار ظهور خانة كلمة المرور...")
                 await page.wait_for_timeout(3000)
-                print("تم تسجيل الدخول بنجاح!")
 
+                password_input = page.locator("input[type='password'], input[name='password']").first
+                await password_input.wait_for(state="visible", timeout=15000)
+                print("🔑 جاري إدخال كلمة المرور...")
+                await password_input.type(str(PASSWORD), delay=50)
+                await page.wait_for_timeout(1000)
+
+                await password_input.press("Enter")
+                try:
+                    login_btn = page.locator("button:has-text('تسجيل الدخول'), button[type='submit']").first
+                    if await login_btn.is_visible(timeout=2000):
+                        await login_btn.click(force=True)
+                except Exception:
+                    pass
+
+                await page.wait_for_timeout(4000)
+                print("تمت محاولة تسجيل الدخول بنجاح!")
                 await close_cookie_banner(page)
 
             # --- فحص اختفاء كلمة 'نورتنا' ---
