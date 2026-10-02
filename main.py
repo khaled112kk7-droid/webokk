@@ -1,5 +1,4 @@
 import os
-import time
 import asyncio
 import requests
 from playwright.async_api import async_playwright
@@ -33,6 +32,7 @@ def send_telegram_photo(photo_path, caption="📸 صورة من السكربت")
                     return True
         except Exception as e:
             print(f"⚠️ محاولة ({attempt + 1}/3) فشلت لإرسال الصورة: {e}")
+            import time
             time.sleep(2)
     
     print("❌ فشل إرسال الصورة، جاري إرسال التقرير كنص...")
@@ -76,32 +76,38 @@ async def perform_check():
             await page.goto(EVENT_URL, wait_until="networkidle")
             await close_cookie_banner(page)
 
-            # --- تسجيل الدخول ---
-            email_input = page.locator("input[type='email'], input[placeholder*='you@email.com']").first
+            # --- تسجيل الدخول المطور ---
+            email_input = page.locator("input[type='email'], input[placeholder*='you@email.com'], input[name='email']").first
             if await email_input.is_visible(timeout=5000):
                 print("📧 [خطوة 2] إدخال البريد الإلكتروني...")
                 await email_input.fill(str(EMAIL))
                 await page.wait_for_timeout(1000)
 
-                try:
+                # البحث عن زر المتابعة والنقر عليه
+                submit_email_btn = page.locator("button[type='submit'], button:has-text('تابع'), button:has-text('التالي'), button:has-text('تسجيل الدخول')").first
+                if await submit_email_btn.is_visible(timeout=3000):
+                    await submit_email_btn.click(force=True)
+                else:
                     await email_input.press("Enter")
-                except Exception:
-                    continue_btn = page.locator("button:has-text('تابع باستخدام البريد الإلكتروني')").first
-                    await continue_btn.click(force=True)
 
-                password_input = page.locator("input[type='password']").first
-                await password_input.wait_for(timeout=15000)
+                print("⏳ انتظار ظهور خانة كلمة المرور...")
+                await page.wait_for_timeout(3000)
+
+                # محددات متعدّدة لخانة كلمة المرور
+                password_input = page.locator("input[type='password'], input[name='password']").first
+                await password_input.wait_for(state="visible", timeout=15000)
+                
                 print("🔑 [خطوة 3] إدخال كلمة المرور...")
                 await password_input.fill(str(PASSWORD))
                 await page.wait_for_timeout(1000)
 
-                try:
+                submit_pass_btn = page.locator("button[type='submit'], button:has-text('تسجيل الدخول')").first
+                if await submit_pass_btn.is_visible(timeout=3000):
+                    await submit_pass_btn.click(force=True)
+                else:
                     await password_input.press("Enter")
-                except Exception:
-                    login_btn = page.locator("button:has-text('تسجيل الدخول')").first
-                    await login_btn.click(force=True)
 
-                await page.wait_for_timeout(4000)
+                await page.wait_for_timeout(5000)
 
             # --- فحص اختفاء كلمة 'نورتنا' ---
             is_disappeared = await check_welcome_message_disappeared(page)
@@ -123,18 +129,8 @@ async def perform_check():
             except Exception as img_err:
                 print(f"فشل إرسال الصورة: {img_err}")
         finally:
-            print("🏁 إغلاق المتصفح وإنهاء دورة الفحص.")
+            print("🏁 إغلاق المتصفح وإنهاء الفحص.")
             await browser.close()
 
-async def main():
-    # إجراء 10 فحوصات يفصل بين كل فحص وآخر 30 ثانية
-    for cycle in range(1, 11):
-        print(f"\n--- ⏱️ الفحص رقم ({cycle} من 10) ---")
-        await perform_check()
-        
-        if cycle < 10:
-            print("⏳ انتظار 30 ثانية قبل إجراء الفحص التالي...")
-            await asyncio.sleep(30)
-
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(perform_check())
