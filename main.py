@@ -3,7 +3,7 @@ import asyncio
 import requests
 from playwright.async_api import async_playwright
 
-EMAIL = os.getenv("WEBOOK_EMIL")
+EMAIL = os.getenv("WEBOOK_EMAIL")
 PASSWORD = os.getenv("WEBOOK_PASS")
 TELEGRAM_BOT_TOKEN = os.getenv("TELE_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELE_CHAT_ID")
