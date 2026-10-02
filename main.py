@@ -4,10 +4,10 @@ import requests
 from playwright.async_api import async_playwright
 
 # استدعاء المتغيرات البيئية المطابقة لـ GitHub Secrets
-EMAIL = os.getenv("WEBOOK_EMAIL") or os.getenv("WEBOOK_EMIL")
+EMAIL = os.getenv("WEBOOK_EMAIL")
 PASSWORD = os.getenv("WEBOOK_PASS")
-TELEGRAM_BOT_TOKEN = os.getenv("TELE_BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELE_CHAT_ID") or os.getenv("TELEGRAM_CHAT_ID")
+TELEGRAM_BOT_TOKEN = os.getenv("TELE_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELE_CHAT_ID")
 
 EVENT_URL = "https://webook.com/ar/sa/dam/sports-event/events/alqadsiah-vs-al-hilal-tickets-26-27/book"
 
@@ -22,17 +22,17 @@ def send_telegram(message):
 def send_telegram_photo(photo_path, caption="📸 صورة من السكربت"):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("⚠️ توكن التليجرام أو Chat ID غير معرف بشكل صحيح في المتغيرات البيئية.")
+        print("⚠️ توكن التليجرام أو Chat ID غير معرف بشكل صحيح.")
         return False
 
     for attempt in range(3):
         try:
             with open(photo_path, "rb") as photo:
-                payload = {"chat_id": TELEGRAM_CHAT_ID, "caption": caption}
+                payload = {"chat_id": TELEGRAM_CHAT_ID, "caption": caption, "parse_mode": "Markdown"}
                 files = {"photo": ("screenshot.png", photo, "image/png")}
                 res = requests.post(url, data=payload, files=files, timeout=30)
                 if res.status_code == 200:
-                    print("📬 تم إرسال الصورة إلى التليجرام بنجاح!")
+                    print("📬 تم إرسال الصورة والتنبيه إلى التليجرام بنجاح!")
                     return True
                 else:
                     print(f"⚠️ استجابة التليجرام: {res.status_code} - {res.text}")
@@ -41,7 +41,6 @@ def send_telegram_photo(photo_path, caption="📸 صورة من السكربت")
             import time
             time.sleep(2)
     
-    print("❌ فشل إرسال الصورة، جاري إرسال التتقرير كنص...")
     send_telegram(f"{caption}\n\n(تعذر إرفاق صورة الشاشة)")
     return False
 
@@ -55,20 +54,12 @@ async def close_cookie_banner(page):
     except Exception:
         pass
 
-async def check_welcome_message_disappeared(page):
-    print("🔍 جاري التحقق من وجود كلمة 'نورتنا' في الصفحة...")
-    await page.wait_for_timeout(2000)
-
+async def is_welcome_disappeared(page):
+    await page.wait_for_timeout(1000)
     has_welcome_text = await page.evaluate("""() => {
         return document.body.innerText.includes('نورتنا');
     }""")
-
-    if not has_welcome_text:
-        print("🚨 كلمة 'نورتنا' اختفت! التذاكر أو الصفحة أصبحت متاحة الآن!")
-        return True
-    else:
-        print("⏳ كلمة 'نورتنا' لا تزال موجودة.")
-        return False
+    return not has_welcome_text
 
 async def perform_check():
     async with async_playwright() as p:
@@ -89,28 +80,22 @@ async def perform_check():
             await page.wait_for_timeout(3000)
             await close_cookie_banner(page)
 
-            # --- الخطوة 1: إدخال البريد الإلكتروني والمتابعة بكافة الطرق الممكنة ---
+            # --- 1. تسجيل الدخول (إدخال البريد الإلكتروني) ---
             email_input = page.locator("input[type='email'], input[name='email']").first
             try:
                 await email_input.wait_for(state="visible", timeout=10000)
-                print("📧 جاري إدخال البريد الإلكتروني بكتابة تفاعلية...")
+                print("📧 إدخال البريد الإلكتروني...")
                 await email_input.click()
-                # تجريف الحقل أولاً ثم الكتابة حرفاً بحرف لتفعيل الزر
                 await email_input.fill("")
                 await email_input.type(str(EMAIL), delay=50)
                 await page.wait_for_timeout(1000)
 
-                # 1. محاولة الضغط بزر Enter من الكيبورد
-                print("⌨️ تجربة الضغط على Enter...")
                 await email_input.press("Enter")
                 await page.wait_for_timeout(1500)
 
-                # 2. إذا لم تتغير الصفحة، النقر المباشر على الزر بالماوس
                 submit_btn = page.locator("button:has-text('تابع باستخدام البريد الإلكتروني'), button:has-text('تابع')").first
                 if await submit_btn.is_visible(timeout=3000):
-                    print("🔘 النقر على زر المتابعة...")
                     await submit_btn.click(force=True)
-                    # دعم إضافي عبر JavaScript في حال عدم تجاوب النقر العادي
                     await page.evaluate("""() => {
                         const btns = Array.from(document.querySelectorAll('button'));
                         const targetBtn = btns.find(b => b.innerText.includes('تابع'));
@@ -119,23 +104,19 @@ async def perform_check():
 
                 await page.wait_for_timeout(2500)
             except Exception as e:
-                print(f"❌ فشلت خطوة إدخال البريد: {e}")
-                await page.screenshot(path="step1_email_failed.png")
-                send_telegram_photo("step1_email_failed.png", f"❌ فشلت خطوة إدخال البريد الإلكتروني:\n`{e}`")
+                print(f"❌ فشلت خطوة البريد الإلكتروني: {e}")
                 return
 
-            # --- الخطوة 2: انتظار وإدخال كلمة المرور ---
-            print("⏳ انتظار ظهور خانة كلمة المرور...")
+            # --- 2. إدخال كلمة المرور وتسجيل الدخول ---
             password_input = page.locator("input[type='password'], input[name='password']").first
             try:
                 await password_input.wait_for(state="visible", timeout=15000)
-                print("🔑 جاري إدخال كلمة المرور...")
+                print("🔑 إدخال كلمة المرور...")
                 await password_input.click()
                 await password_input.fill("")
                 await password_input.type(str(PASSWORD), delay=50)
                 await page.wait_for_timeout(1000)
 
-                # ضغطة Enter لتسجيل الدخول
                 await password_input.press("Enter")
 
                 login_btn = page.locator("button:has-text('تسجيل الدخول')").first
@@ -144,33 +125,41 @@ async def perform_check():
 
                 await page.wait_for_timeout(4000)
                 await close_cookie_banner(page)
+                print("✅ تم تسجيل الدخول بنجاح والوصول لصفحة الفعالية!")
             except Exception as e:
                 print(f"❌ فشلت خطوة كلمة المرور: {e}")
-                await page.screenshot(path="step2_password_failed.png")
-                send_telegram_photo("step2_password_failed.png", "⚠️ فشلت خطوة كلمة المرور. إليك صورة الصفحة الحالية:")
                 return
 
-            # --- الخطوة 3: فحص اختفاء كلمة 'نورتنا' ---
-            is_disappeared = await check_welcome_message_disappeared(page)
+            # --- 3. الحلقة: تحديث الصفحة 10 مرات مع انتظر 10 ثوانٍ بين كل تحديث ---
+            print("🔄 بدء حلقة التحديث والفحص (10 تحديثات، بين كل تحديث 10 ثوانٍ)...")
+            
+            for iteration in range(1, 11):
+                print(f"🔍 المحاولة ({iteration}/10): فحص الصفحة...")
 
-            if is_disappeared:
-                report = "🚨 *تنبيه عاجل!*\n\n🎉 *اختفت رسالة 'نورتنا'!* قد تكون التذاكر أصبحت متاحة الآن."
-                await page.screenshot(path="opened_page.png")
-                send_telegram_photo("opened_page.png", f"⚡ *تغيّر في حالة الصفحة!*\n\n{report}")
-            else:
-                report = "ℹ️ *حالة الفحص:*\n\nلا تزال رسالة 'نورتنا، بس جيت بدري شوي!' ظاهرة."
-                await page.screenshot(path="waiting_page.png")
-                send_telegram_photo("waiting_page.png", report)
+                # فحص اختفاء كلمة نورتنا
+                disappeared = await is_welcome_disappeared(page)
+
+                if disappeared:
+                    print("🚨 أهلاً! اختفت كلمة 'نورتنا'! جاري إرسال التنبيه الفوري وإيقاف الفحص...")
+                    report = "🚨 *تنبيه عاجل وخاص!*\n\n🎉 *اختفت رسالة 'نورتنا'!* التذاكر قد تكون فتحت الآن، ادخل واحجز فوراً!"
+                    await page.screenshot(path="tickets_open.png")
+                    send_telegram_photo("tickets_open.png", report)
+                    break  # إيقاف التكرار فوراً
+                else:
+                    print(f"⏳ المحاولة ({iteration}/10): كلمة 'نورتنا' لا تزال موجودة.")
+
+                # إذا لم نصل بعد إلى المحاولة العاشرة، ننتظر 10 ثوانٍ ثم نعيد تحديث الصفحة
+                if iteration < 10:
+                    print("⏱️ انتظار 10 ثوانٍ قبل التحديث القادم...")
+                    await page.wait_for_timeout(10000)  # انتظار 10 ثوانٍ
+                    print("🔄 إعادة تحديث الصفحة (Reload)...")
+                    await page.reload(wait_until="domcontentloaded")
+                    await page.wait_for_timeout(2000)
 
         except Exception as e:
-            print(f"❌ حدث خطأ غير متوقع: {e}")
-            try:
-                await page.screenshot(path="error_screenshot.png")
-                send_telegram_photo("error_screenshot.png", f"❌ توقف السكربت عند الخطأ:\n`{e}`")
-            except Exception as img_err:
-                print(f"فشل إرسال الصورة: {img_err}")
+            print(f"❌ حدث خطأ غير متوقع أثناء الفحص: {e}")
         finally:
-            print("🏁 إغلاق المتصفح وإنهاء الفحص.")
+            print("🏁 إغلاق المتصفح وإنهاء عملية الفحص.")
             await browser.close()
 
 if __name__ == "__main__":
