@@ -55,3 +55,11 @@ jobs:
       with:
         path: seen_events.json
         key: seen-events-${{ github.run_id }}
+
+    # الخطوة الجديدة: استدعاء وتشغيل الـ Workflow تلقائياً بمجرد الانتهاء
+    - name: Trigger Next Run Automatically
+      if: always()
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        gh workflow run "Webook Monitor"
