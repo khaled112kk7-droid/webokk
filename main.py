@@ -4,17 +4,16 @@ import asyncio
 import requests
 from playwright.async_api import async_playwright
 
-# استدعاء المتغيرات البيئية المطابقة لـ GitHub Secrets
 EMAIL = os.getenv("WEBOOK_EMAIL")
 PASSWORD = os.getenv("WEBOOK_PASS")
 TELEGRAM_BOT_TOKEN = os.getenv("TELE_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELE_CHAT_ID")
 
-EVENT_URL = "https://webook.com/ar/SA/dam/sports-event/events/alqadsiah-vs-al-hilal-tickets-26-27/book"
+EVENT_URL = "https://webook.com/ar/sa/dam/sports-event/events/alqadsiah-vs-al-hilal-tickets-26-27/book"
 
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"}
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
     try:
         requests.post(url, json=payload, timeout=10)
     except Exception as e:
@@ -29,7 +28,7 @@ def send_telegram_photo(photo_path, caption="📸 صورة من السكربت")
     for attempt in range(3):
         try:
             with open(photo_path, "rb") as photo:
-                payload = {"chat_id": TELEGRAM_CHAT_ID, "caption": caption, "parse_mode": "Markdown"}
+                payload = {"chat_id": TELEGRAM_CHAT_ID, "caption": caption}
                 files = {"photo": ("screenshot.png", photo, "image/png")}
                 res = requests.post(url, data=payload, files=files, timeout=30)
                 if res.status_code == 200:
@@ -56,11 +55,23 @@ async def close_cookie_banner(page):
         pass
 
 async def is_welcome_disappeared(page):
-    await page.wait_for_timeout(1000)
-    has_welcome_text = await page.evaluate("""() => {
-        return document.body.innerText.includes('نورتنا');
-    }""")
-    return not has_welcome_text
+    try:
+        # 1. انتظار استقرار الشبكة لضمان اكتمال بناء الصفحة
+        await page.wait_for_load_state("networkidle", timeout=7000)
+    except Exception:
+        pass
+
+    # 2. الفحص الأول
+    has_welcome_first = await page.evaluate("() => document.body.innerText.includes('نورتنا')")
+    
+    # 3. إذا لم تجد الكلمة، ننتظر 2.5 ثانية ونفحص للمرة الثانية للتأكد القطعي
+    if not has_welcome_first:
+        print("🔍 لم تظهر الكلمة في الفحص الأول.. جاري التأكد مرة أخرى خلال 2.5 ثانية...")
+        await page.wait_for_timeout(2500)
+        has_welcome_second = await page.evaluate("() => document.body.innerText.includes('نورتنا')")
+        return not has_welcome_second
+
+    return False
 
 async def perform_check():
     async with async_playwright() as p:
@@ -81,7 +92,7 @@ async def perform_check():
             await page.wait_for_timeout(3000)
             await close_cookie_banner(page)
 
-            # --- 1. تسجيل الدخول (إدخال البريد الإلكتروني) ---
+            # --- تسجيل الدخول ---
             email_input = page.locator("input[type='email'], input[name='email']").first
             try:
                 await email_input.wait_for(state="visible", timeout=10000)
@@ -97,18 +108,12 @@ async def perform_check():
                 submit_btn = page.locator("button:has-text('تابع باستخدام البريد الإلكتروني'), button:has-text('تابع')").first
                 if await submit_btn.is_visible(timeout=3000):
                     await submit_btn.click(force=True)
-                    await page.evaluate("""() => {
-                        const btns = Array.from(document.querySelectorAll('button'));
-                        const targetBtn = btns.find(b => b.innerText.includes('تابع'));
-                        if (targetBtn) targetBtn.click();
-                    }""")
 
                 await page.wait_for_timeout(2500)
             except Exception as e:
                 print(f"❌ فشلت خطوة البريد الإلكتروني: {e}")
                 return
 
-            # --- 2. إدخال كلمة المرور وتسجيل الدخول ---
             password_input = page.locator("input[type='password'], input[name='password']").first
             try:
                 await password_input.wait_for(state="visible", timeout=15000)
@@ -131,30 +136,28 @@ async def perform_check():
                 print(f"❌ فشلت خطوة كلمة المرور: {e}")
                 return
 
-            # --- 3. الحلقة: تحديث الصفحة 10 مرات مع انتظار 10 ثوانٍ بين كل تحديث ---
-            print("🔄 بدء حلقة التحديث والفحص (10 تحديثات، بين كل تحديث 10 ثوانٍ)...")
+            # --- حلقة التحديث والفحص ---
+            print("🔄 بدء حلقة التحديث والفحص...")
             
             for iteration in range(1, 11):
                 print(f"🔍 المحاولة ({iteration}/10): فحص الصفحة...")
 
-                # فحص اختفاء كلمة نورتنا
                 disappeared = await is_welcome_disappeared(page)
 
                 if disappeared:
-                    print("🚨 اختفت كلمة 'نورتنا'! جاري إرسال التنبيه الفوري وإيقاف الفحص...")
+                    print("🚨 اختفت كلمة 'نورتنا' مؤكداً! جاري إرسال التنبيه الفوري وإيقاف الفحص...")
                     report = f"إنتهت الأولوية لتذاكر الهلال والقادسية\n\n🔗 رابط الحجز:\n{EVENT_URL}"
+                    
                     await page.screenshot(path="tickets_open.png")
                     send_telegram_photo("tickets_open.png", report)
                     
-                    # إنشاء ملف إشارة الإيقاف لمنع الـ Workflow القادم من العمل
                     with open("stop_signal.txt", "w") as f:
                         f.write("STOP")
 
-                    break  # إيقاف التكرار فوراً
+                    break
                 else:
                     print(f"⏳ المحاولة ({iteration}/10): كلمة 'نورتنا' لا تزال موجودة.")
 
-                # إذا لم نصل بعد إلى المحاولة العاشرة، ننتظر 10 ثوانٍ ثم نعيد تحديث الصفحة
                 if iteration < 10:
                     print("⏱️ انتظار 10 ثوانٍ قبل التحديث القادم...")
                     await page.wait_for_timeout(10000)
