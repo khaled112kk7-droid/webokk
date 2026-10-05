@@ -33,7 +33,7 @@ jobs:
     - name: Run Webook monitor script
       env:
         TELE_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        TELE_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        TELE_CHAT_ID: ${{ secrets.TELE_CHAT_ID }}
         WEBOOK_EMAIL: ${{ secrets.WEBOOK_EMAIL }}
         WEBOOK_PASS: ${{ secrets.WEBOOK_PASS }}
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
