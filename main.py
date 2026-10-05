@@ -57,15 +57,15 @@ async def close_cookie_banner(page):
 
 async def is_welcome_disappeared(page):
     try:
-        await page.wait_for_load_state("networkidle", timeout=8000)
+        await page.wait_for_load_state("networkidle", timeout=7000)
     except Exception:
         pass
 
     has_welcome_first = await page.evaluate("() => document.body.innerText.includes('نورتنا')")
     
     if not has_welcome_first:
-        print("🔍 فحص أولي: الكلمة غير موجودة.. انتظار 3 ثوان للتأكيد...")
-        await page.wait_for_timeout(3000)
+        print("🔍 فحص أولي: الكلمة غير موجودة.. انتظار 2.5 ثانية للتأكيد...")
+        await page.wait_for_timeout(2500)
         has_welcome_second = await page.evaluate("() => document.body.innerText.includes('نورتنا')")
         return not has_welcome_second
 
@@ -75,7 +75,6 @@ async def perform_check():
     async with async_playwright() as p:
         print("🚀 بدء تشغيل المتصفح بمحاكاة بشرية...")
         
-        # استخدام خيارات تمنع اكتشاف أتمتة المتصفح
         browser = await p.chromium.launch(
             headless=True,
             args=[
@@ -91,7 +90,6 @@ async def perform_check():
             user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
         )
         
-        # إضافة سكريبت لإخفاء خصائص البوت
         page = await context.new_page()
         await page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
 
@@ -108,7 +106,7 @@ async def perform_check():
                 print("📧 إدخال البريد الإلكتروني...")
                 await email_input.click()
                 await email_input.fill("")
-                await email_input.type(str(EMAIL), delay=random.randint(60, 120))
+                await email_input.type(str(EMAIL), delay=random.randint(50, 100))
                 await page.wait_for_timeout(random.randint(1000, 2000))
 
                 await email_input.press("Enter")
@@ -118,7 +116,7 @@ async def perform_check():
                 if await submit_btn.is_visible(timeout=3000):
                     await submit_btn.click(force=True)
 
-                await page.wait_for_timeout(3000)
+                await page.wait_for_timeout(2500)
             except Exception as e:
                 print(f"❌ فشلت خطوة البريد الإلكتروني: {e}")
                 return
@@ -129,7 +127,7 @@ async def perform_check():
                 print("🔑 إدخال كلمة المرور...")
                 await password_input.click()
                 await password_input.fill("")
-                await password_input.type(str(PASSWORD), delay=random.randint(60, 120))
+                await password_input.type(str(PASSWORD), delay=random.randint(50, 100))
                 await page.wait_for_timeout(1000)
 
                 await password_input.press("Enter")
@@ -145,8 +143,8 @@ async def perform_check():
                 print(f"❌ فشلت خطوة كلمة المرور: {e}")
                 return
 
-            # --- حلقة التحديث والفحص (4 محاولات فقط مع فواصل زمنية متغيرة) ---
-            max_attempts = 4
+            # --- حلقة التحديث والفحص (5 محاولات بفواصل زمنية عشوائية مختلفة) ---
+            max_attempts = 5
             print(f"🔄 بدء حلقة التحديث والفحص ({max_attempts} محاولات)...")
             
             for iteration in range(1, max_attempts + 1):
@@ -169,14 +167,14 @@ async def perform_check():
                     print(f"⏳ المحاولة ({iteration}/{max_attempts}): كلمة 'نورتنا' لا تزال موجودة.")
 
                 if iteration < max_attempts:
-                    # انتظار عشوائي بين 20 إلى 35 ثانية لتفادي كشف التكرار
-                    sleep_time = random.randint(20, 35)
+                    # توليد مدة زمنية عشوائية جديدة ومختلفة في كل مرة (بين 18 إلى 35 ثانية)
+                    sleep_time = random.randint(18, 35)
                     print(f"⏱️ انتظار عشوائي لمدة {sleep_time} ثانية قبل التحديث القادم...")
                     await page.wait_for_timeout(sleep_time * 1000)
                     
                     print("🔄 إعادة تحديث الصفحة (Reload)...")
                     await page.reload(wait_until="domcontentloaded")
-                    await page.wait_for_timeout(random.randint(3000, 5000))
+                    await page.wait_for_timeout(random.randint(2500, 4500))
 
         except Exception as e:
             print(f"❌ حدث خطأ أثناء الفحص: {e}")
