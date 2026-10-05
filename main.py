@@ -1,5 +1,6 @@
 import os
 import sys
+import random
 import asyncio
 import requests
 from playwright.async_api import async_playwright
@@ -9,7 +10,7 @@ PASSWORD = os.getenv("WEBOOK_PASS")
 TELEGRAM_BOT_TOKEN = os.getenv("TELE_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELE_CHAT_ID")
 
-EVENT_URL = "https://webook.com/ar/SA/dam/sports-event/events/alqadsiah-vs-al-hilal-tickets-26-27/book"
+EVENT_URL = "https://webook.com/ar/sa/dam/sports-event/events/alqadsiah-vs-al-hilal-tickets-26-27/book"
 
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -56,18 +57,15 @@ async def close_cookie_banner(page):
 
 async def is_welcome_disappeared(page):
     try:
-        # 1. انتظار استقرار الشبكة لضمان اكتمال بناء الصفحة
-        await page.wait_for_load_state("networkidle", timeout=7000)
+        await page.wait_for_load_state("networkidle", timeout=8000)
     except Exception:
         pass
 
-    # 2. الفحص الأول
     has_welcome_first = await page.evaluate("() => document.body.innerText.includes('نورتنا')")
     
-    # 3. إذا لم تجد الكلمة، ننتظر 2.5 ثانية ونفحص للمرة الثانية للتأكد القطعي
     if not has_welcome_first:
-        print("🔍 لم تظهر الكلمة في الفحص الأول.. جاري التأكد مرة أخرى خلال 2.5 ثانية...")
-        await page.wait_for_timeout(2500)
+        print("🔍 فحص أولي: الكلمة غير موجودة.. انتظار 3 ثوان للتأكيد...")
+        await page.wait_for_timeout(3000)
         has_welcome_second = await page.evaluate("() => document.body.innerText.includes('نورتنا')")
         return not has_welcome_second
 
@@ -75,21 +73,32 @@ async def is_welcome_disappeared(page):
 
 async def perform_check():
     async with async_playwright() as p:
-        print("🚀 بدء تشغيل المتصفح...")
+        print("🚀 بدء تشغيل المتصفح بمحاكاة بشرية...")
+        
+        # استخدام خيارات تمنع اكتشاف أتمتة المتصفح
         browser = await p.chromium.launch(
             headless=True,
-            args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
+            args=[
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-blink-features=AutomationControlled',
+                '--disable-dev-shm-usage'
+            ]
         )
+        
         context = await browser.new_context(
-            viewport={'width': 1280, 'height': 800},
-            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+            viewport={'width': 1366, 'height': 768},
+            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
         )
+        
+        # إضافة سكريبت لإخفاء خصائص البوت
         page = await context.new_page()
+        await page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
 
         try:
             print("🌐 الانتقال المباشر لصفحة الفعالية...")
             await page.goto(EVENT_URL, wait_until="domcontentloaded")
-            await page.wait_for_timeout(3000)
+            await page.wait_for_timeout(random.randint(2000, 4000))
             await close_cookie_banner(page)
 
             # --- تسجيل الدخول ---
@@ -99,17 +108,17 @@ async def perform_check():
                 print("📧 إدخال البريد الإلكتروني...")
                 await email_input.click()
                 await email_input.fill("")
-                await email_input.type(str(EMAIL), delay=50)
-                await page.wait_for_timeout(1000)
+                await email_input.type(str(EMAIL), delay=random.randint(60, 120))
+                await page.wait_for_timeout(random.randint(1000, 2000))
 
                 await email_input.press("Enter")
-                await page.wait_for_timeout(1500)
+                await page.wait_for_timeout(2000)
 
                 submit_btn = page.locator("button:has-text('تابع باستخدام البريد الإلكتروني'), button:has-text('تابع')").first
                 if await submit_btn.is_visible(timeout=3000):
                     await submit_btn.click(force=True)
 
-                await page.wait_for_timeout(2500)
+                await page.wait_for_timeout(3000)
             except Exception as e:
                 print(f"❌ فشلت خطوة البريد الإلكتروني: {e}")
                 return
@@ -120,7 +129,7 @@ async def perform_check():
                 print("🔑 إدخال كلمة المرور...")
                 await password_input.click()
                 await password_input.fill("")
-                await password_input.type(str(PASSWORD), delay=50)
+                await password_input.type(str(PASSWORD), delay=random.randint(60, 120))
                 await page.wait_for_timeout(1000)
 
                 await password_input.press("Enter")
@@ -131,22 +140,23 @@ async def perform_check():
 
                 await page.wait_for_timeout(4000)
                 await close_cookie_banner(page)
-                print("✅ تم تسجيل الدخول بنجاح والوصول لصفحة الفعالية!")
+                print("✅ تم تسجيل الدخول بنجاح!")
             except Exception as e:
                 print(f"❌ فشلت خطوة كلمة المرور: {e}")
                 return
 
-            # --- حلقة التحديث والفحص ---
-            print("🔄 بدء حلقة التحديث والفحص...")
+            # --- حلقة التحديث والفحص (4 محاولات فقط مع فواصل زمنية متغيرة) ---
+            max_attempts = 4
+            print(f"🔄 بدء حلقة التحديث والفحص ({max_attempts} محاولات)...")
             
-            for iteration in range(1, 11):
-                print(f"🔍 المحاولة ({iteration}/10): فحص الصفحة...")
+            for iteration in range(1, max_attempts + 1):
+                print(f"🔍 المحاولة ({iteration}/{max_attempts}): فحص الصفحة...")
 
                 disappeared = await is_welcome_disappeared(page)
 
                 if disappeared:
                     print("🚨 اختفت كلمة 'نورتنا' مؤكداً! جاري إرسال التنبيه الفوري وإيقاف الفحص...")
-                    report = f"إنتهت الأولوية لتذاكر الهلال والقادسية\n\n🔗 رابط الحجز:\n{EVENT_URL}"
+                    report = f"تم فك الأولوية لتذاكر الهلال والقادسية\n\n🔗 رابط الحجز:\n{EVENT_URL}"
                     
                     await page.screenshot(path="tickets_open.png")
                     send_telegram_photo("tickets_open.png", report)
@@ -156,17 +166,20 @@ async def perform_check():
 
                     break
                 else:
-                    print(f"⏳ المحاولة ({iteration}/10): كلمة 'نورتنا' لا تزال موجودة.")
+                    print(f"⏳ المحاولة ({iteration}/{max_attempts}): كلمة 'نورتنا' لا تزال موجودة.")
 
-                if iteration < 10:
-                    print("⏱️ انتظار 10 ثوانٍ قبل التحديث القادم...")
-                    await page.wait_for_timeout(10000)
+                if iteration < max_attempts:
+                    # انتظار عشوائي بين 20 إلى 35 ثانية لتفادي كشف التكرار
+                    sleep_time = random.randint(20, 35)
+                    print(f"⏱️ انتظار عشوائي لمدة {sleep_time} ثانية قبل التحديث القادم...")
+                    await page.wait_for_timeout(sleep_time * 1000)
+                    
                     print("🔄 إعادة تحديث الصفحة (Reload)...")
                     await page.reload(wait_until="domcontentloaded")
-                    await page.wait_for_timeout(2000)
+                    await page.wait_for_timeout(random.randint(3000, 5000))
 
         except Exception as e:
-            print(f"❌ حدث خطأ غير متوقع أثناء الفحص: {e}")
+            print(f"❌ حدث خطأ أثناء الفحص: {e}")
         finally:
             print("🏁 إغلاق المتصفح وإنهاء عملية الفحص.")
             await browser.close()
