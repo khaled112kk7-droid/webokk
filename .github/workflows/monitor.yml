@@ -3,18 +3,14 @@ name: Webook Monitor
 on:
   workflow_dispatch:
 
-# منع التراكم والتوازي: تلغي هذه الخاصية أي جلسة معلقة أو سابقة وتضمن تشغيل جلسة واحدة متسلسلة دائماً
 concurrency:
-  group: webook-monitor-single
+  group: webook-monitoring
   cancel-in-progress: true
-
-permissions:
-  actions: write
-  contents: write
 
 jobs:
   check-webook:
     runs-on: ubuntu-latest
+
     steps:
     - name: Check out repository
       uses: actions/checkout@v4
@@ -32,16 +28,15 @@ jobs:
 
     - name: Run Webook monitor script
       env:
-        TELE_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        TELE_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         WEBOOK_EMAIL: ${{ secrets.WEBOOK_EMAIL }}
         WEBOOK_PASS: ${{ secrets.WEBOOK_PASS }}
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        GITHUB_REPOSITORY: ${{ github.repository }}
-      run: python main.py
+        TELE_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELE_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: |
+        python main.py
 
     - name: Trigger Next Run Automatically
-      if: success()
+      if: always() && !cancelled()
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
@@ -49,6 +44,13 @@ jobs:
           echo "🛑 تم إرسال تنبيه فتح التذاكر! يتم إيقاف التكرار التلقائي الآن."
         else
           echo "🔄 جاري إطلاق تشغيل جديد متسلسل..."
-          sleep 2
-          gh workflow run "Webook Monitor"
+          sleep 3
+          
+          # حلقة إعادة محاولة في حال وجود خلل مؤقت في سيرفرات GitHub
+          for i in {1..5}; do
+            gh workflow run "Webook Monitor" && break || {
+              echo "⚠️ فشلت محاولة الإطلاق بسبب خطأ في السيرفر ($i/5)، جاري إعادة المحاولة خلال 10 ثوانٍ..."
+              sleep 10
+            }
+          done
         fi
